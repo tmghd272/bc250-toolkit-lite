@@ -97,6 +97,13 @@ confirm() {
 
 run_cpu_governor() {
     print_step "02" "Installing CPU Governor"
+
+    if systemctl is-enabled bc250-smu-oc.service &>/dev/null || \
+       pipx list 2>/dev/null | grep -q 'bc250-smu-oc'; then
+        print_info "CPU governor already installed — skipping."
+        return 0
+    fi
+
     print_info "Installing dependencies: python-pipx, stress"
     pacman -Syu python-pipx stress --noconfirm || { print_error "Failed to install dependencies."; return 1; }
     print_info "Cloning bc250_smu_oc repository..."
@@ -123,6 +130,13 @@ run_cpu_governor() {
 
 run_gpu_governor() {
     print_step "03" "Installing GPU Governor"
+
+    if systemctl is-enabled cyan-skillfish-governor-smu.service &>/dev/null || \
+       pacman -Qq cyan-skillfish-governor-smu &>/dev/null; then
+        print_info "GPU governor already installed — skipping."
+        return 0
+    fi
+
     print_info "Installing cyan-skillfish-governor-smu via paru (as $REAL_USER)..."
     sudo -u "$REAL_USER" paru -S cyan-skillfish-governor-smu --noconfirm
     print_info "Enabling and starting systemd service..."
@@ -162,7 +176,7 @@ run_enable_swap() {
 
 run_set_loglevel() {
     local CONF="/etc/default/limine"
-    print_step "05" "Hiding RDSEED Warning — Setting loglevel=0 in $CONF"
+    print_step "06" "Hiding RDSEED Warning — Setting loglevel=0 in $CONF"
 
     if [[ ! -f "$CONF" ]]; then
         print_error "File not found: $CONF"
@@ -200,7 +214,7 @@ run_set_loglevel() {
 
 run_disable_zram_enable_zswap() {
     local CONF="/etc/default/limine"
-    print_step "06" "Disabling ZRAM & Enabling ZSWAP"
+    print_step "05" "Disabling ZRAM & Enabling ZSWAP"
 
     if [[ ! -f "$CONF" ]]; then
         print_error "File not found: $CONF"
@@ -354,6 +368,11 @@ run_switch_to_default_kernel() {
         return 1
     fi
 
+    if ! confirm "This will install linux-cachyos and remove linux-cachyos-deckify. Proceed?"; then
+        print_info "Cancelled."
+        return 0
+    fi
+
     # 3. Install the default kernel
     print_info "Installing linux-cachyos and headers..."
     if ! sudo pacman -S --noconfirm linux-cachyos linux-cachyos-headers; then
@@ -377,7 +396,7 @@ run_switch_to_default_kernel() {
 
 run_install_acpi_fix() {
     print_step "08" "Installing BC250 ACPI Fix"
-
+    print_info "NOTE: This fix is known to not work and is retained for reference only. Proceed at your own risk."
     local CPIO_NAME="bc250_acpi.cpio"
     local CPIO_DEST="/boot/$CPIO_NAME"
     local LIMINE_CONFIG="/boot/limine.conf"
@@ -471,7 +490,7 @@ HOOK
 }
 
 run_revert_acpi_fix() {
-    print_step "13" "Revert BC250 ACPI Fix"
+    print_step "R-6" "Revert BC250 ACPI Fix"
 
     local CPIO_DEST="/boot/bc250_acpi.cpio"
     local HOOK_FILE="/etc/pacman.d/hooks/bc250-acpi-fix.hook"
@@ -1147,14 +1166,14 @@ run_overclock_menu() {
 
 run_revert_zswap() {
     local CONF="/etc/default/limine"
-    print_step "09" "Revert ZSWAP — Re-enabling ZRAM"
+    print_step "R-3" "Revert ZSWAP — Re-enabling ZRAM, removing swapfile"
 
     if [[ ! -f "$CONF" ]]; then
         print_error "File not found: $CONF"
         return 1
     fi
 
-    if ! confirm "This will remove zswap params and re-enable ZRAM in $CONF. Proceed?"; then
+    if ! confirm "This will remove zswap params, re-enable ZRAM, remove the swapfile and reset swappiness to default. Proceed?"; then
         print_info "Cancelled."
         return 0
     fi
@@ -1189,9 +1208,55 @@ run_revert_zswap() {
         print_info "lz4 not found in $MKINITCPIO — skipping."
     fi
 
+    # --- Disable and remove swapfile ---
+    if swapon --show | grep -q '/var/swap/swapfile'; then
+        print_info "Disabling swapfile..."
+        swapoff /var/swap/swapfile || { print_error "Failed to disable swapfile."; return 1; }
+        print_info "Swapfile disabled."
+    else
+        print_info "Swapfile not active — skipping swapoff."
+    fi
+
+    if [[ -f "/var/swap/swapfile" ]]; then
+        print_info "Removing swapfile..."
+        rm -f /var/swap/swapfile
+        print_info "Swapfile removed."
+    else
+        print_info "Swapfile not found — skipping."
+    fi
+
+    # --- Remove Btrfs subvolume ---
+    if btrfs subvolume show /var/swap &>/dev/null; then
+        print_info "Deleting Btrfs subvolume /var/swap..."
+        btrfs subvolume delete /var/swap || { print_error "Failed to delete subvolume."; return 1; }
+        print_info "Subvolume deleted."
+    else
+        print_info "/var/swap subvolume not found — skipping."
+    fi
+
+    # --- Remove fstab entry ---
+    if grep -q '/var/swap/swapfile' /etc/fstab; then
+        print_info "Removing swapfile entry from /etc/fstab..."
+        sed -i '/\/var\/swap\/swapfile/d' /etc/fstab
+        print_info "fstab entry removed."
+    else
+        print_info "No swapfile entry in /etc/fstab — skipping."
+    fi
+
+    # --- Reset swappiness ---
+    if [[ -f "/etc/sysctl.d/99-swappiness.conf" ]]; then
+        print_info "Removing swappiness config..."
+        rm -f /etc/sysctl.d/99-swappiness.conf
+        sysctl vm.swappiness=60 > /dev/null
+        print_info "Swappiness reset to default (60)."
+    else
+        print_info "No swappiness config found — skipping."
+    fi
+
     print_info "Regenerating /boot/limine.conf..."
     limine-update
     print_success "Revert complete! Reboot to restore ZRAM and disable ZSWAP."
+    print_info "Note: ZRAM will not be active until after reboot."
     echo -e "  ${DIM}After reboot, verify with: systemctl is-active systemd-zram-setup@zram0.service${RESET}\n"
 }
 
@@ -1392,7 +1457,7 @@ run_status() {
 
 run_revert_loglevel() {
     local CONF="/etc/default/limine"
-    print_step "11" "Revert loglevel — Restoring default"
+    print_step "R-4" "Revert loglevel — Restoring default"
 
     if [[ ! -f "$CONF" ]]; then
         print_error "File not found: $CONF"
@@ -1422,7 +1487,7 @@ run_revert_loglevel() {
 
 run_revert_mitigations() {
     local CONF="/etc/default/limine"
-    print_step "10" "Revert Mitigations — Re-enabling in $CONF"
+    print_step "R-5" "Revert Mitigations — Re-enabling in $CONF"
 
     if [[ ! -f "$CONF" ]]; then
         print_error "File not found: $CONF"
@@ -1449,7 +1514,7 @@ run_revert_mitigations() {
 run_all() {
     print_step "★" "Running All Setup Tasks (2–7)"
     echo -e "  ${DIM}This will run: CPU Governor, GPU Governor, Enable Swap,"
-    echo -e "  Hide RDSEED Warning, Disable ZRAM / Enable ZSWAP, and Disable Mitigations.${RESET}"
+    echo -e "  Disable ZRAM / Enable ZSWAP, Hide RDSEED Warning, and Disable Mitigations.${RESET}"
 
     if ! confirm "Proceed with all tasks?"; then
         print_info "Cancelled."
@@ -1464,14 +1529,13 @@ run_all() {
         run_cpu_governor
         run_gpu_governor
         run_enable_swap
-        run_set_loglevel
         run_disable_zram_enable_zswap
+        run_set_loglevel
         run_disable_mitigations
     )
 
     for task in "${tasks[@]}"; do
-        # --- NEW: PACMAN LOCK GUARD ---
-        # Checks if pacman is busy BEFORE starting the next task
+        # Wait for pacman lock before starting next task
         while [ -f /var/lib/pacman/db.lck ]; do
             print_info "Waiting for system locks to release before: ${task//_/ }..."
             sleep 2
@@ -1509,23 +1573,6 @@ run_all() {
 # ADDITIONAL TOOLS FUNCTIONS
 # ==============================================================================
 
-run_fix_amdgpu_vram() {
-    print_step "1" "Fix AMDGPU VRAM Management for Low-End GPUs"
-    print_info "Requires Linux kernel 7.0 or above."
-
-    while [[ -f /var/lib/pacman/db.lck ]]; do
-        print_info "Waiting for pacman lock..."; sleep 2
-    done
-
-    print_info "Installing dmemcg-booster and plasma-foreground-booster..."
-    if ! pacman -S --noconfirm dmemcg-booster plasma-foreground-booster; then
-        print_error "Failed to install VRAM fix packages. Check the output above."
-        return 1
-    fi
-
-    print_success "dmemcg-booster and plasma-foreground-booster installed!"
-    print_success "AMDGPU VRAM management fix complete!"
-}
 
 run_dolphinbar_udev() {
     local RULES_FILE="/etc/udev/rules.d/51-dolphinbar.rules"
@@ -1551,12 +1598,13 @@ show_experimental_menu() {
     print_banner
     print_section "Additional Tools"
     echo -e "  ${DIM}Additional system utilities and hardware support.${RESET}\n"
-    print_item  "1"  "Toggle Boot Mode"  "Switch between Game Mode & Desktop"
-    print_item  "2"  "DolphinBar Setup"  "Install udev rules for Wiimote support via DolphinBar"
+    print_item  "1"  "CachyOS Kernel"    "Replace Deckify kernel with standard CachyOS"
+    print_item  "2"  "Toggle Boot Mode"  "Switch between Game Mode & Desktop"
+    print_item  "3"  "DolphinBar Setup"  "Install udev rules for Wiimote support via DolphinBar"
     echo ""
     print_item  "0"  "Back"             "Return to main menu"
     echo ""
-    echo -e "  ${BOLD}${CYAN}======================================================================${RESET}"
+    echo -e "  ${BOLD}${CYAN}══════════════════════════════════════════════════════════════${RESET}"
 }
 
 run_experimental_menu() {
@@ -1565,8 +1613,9 @@ run_experimental_menu() {
         read -rp "$(echo -e "  ${BOLD}${WHITE}Enter selection:${RESET} ")" exp_choice
 
         case "${exp_choice^^}" in
-            1) run_toggle_boot_mode;  press_enter ;;
-            2) run_dolphinbar_udev;   press_enter ;;
+            1) run_switch_to_default_kernel; press_enter ;;
+            2) run_toggle_boot_mode;         press_enter ;;
+            3) run_dolphinbar_udev;          press_enter ;;
             0)  return ;;
             *)
                 print_error "Invalid selection: '$exp_choice'"
@@ -1585,8 +1634,8 @@ run_revert_dolphinbar() {
     print_step "R-7" "Reverting DolphinBar udev Rules"
 
     if [[ ! -f "$RULES_FILE" ]]; then
-        print_error "Rules file not found: $RULES_FILE — nothing to remove."
-        return 1
+        print_info "Rules file not found: $RULES_FILE — nothing to remove."
+        return 0
     fi
 
     print_info "Removing $RULES_FILE..."
@@ -1599,32 +1648,71 @@ run_revert_dolphinbar() {
     print_success "DolphinBar udev rules removed. Reconnect your device."
 }
 
-run_revert_amdgpu_vram() {
-    print_step "R-8" "Reverting AMDGPU VRAM Fix"
+run_revert_cpu_governor() {
+    print_step "R-1" "Revert CPU Governor — Removing bc250-smu-oc"
 
-    while [[ -f /var/lib/pacman/db.lck ]]; do
-        print_info "Waiting for pacman lock..."; sleep 2
-    done
-
-    print_info "Removing dmemcg-booster and plasma-foreground-booster..."
-    if ! pacman -Rns --noconfirm dmemcg-booster plasma-foreground-booster; then
-        print_error "Failed to remove VRAM fix packages. Check the output above."
-        return 1
+    if ! systemctl is-enabled bc250-smu-oc.service &>/dev/null && \
+       ! pipx list 2>/dev/null | grep -q 'bc250-smu-oc'; then
+        print_info "CPU governor does not appear to be installed — nothing to revert."
+        return 0
     fi
 
-    print_success "AMDGPU VRAM fix packages removed successfully."
+    if ! confirm "This will stop, disable, and remove the bc250-smu-oc service. Proceed?"; then
+        print_info "Cancelled."
+        return 0
+    fi
+
+    print_info "Stopping and disabling bc250-smu-oc service..."
+    systemctl stop bc250-smu-oc.service 2>/dev/null || true
+    systemctl disable bc250-smu-oc.service 2>/dev/null || true
+
+    print_info "Uninstalling via pipx..."
+    pipx uninstall bc250-smu-oc 2>/dev/null || true
+
+    if [[ -f "$CPU_DEST" ]]; then
+        print_info "Removing config file $CPU_DEST..."
+        rm -f "$CPU_DEST"
+    fi
+
+    print_success "CPU governor removed successfully."
 }
+
+run_revert_gpu_governor() {
+    print_step "R-2" "Revert GPU Governor — Removing cyan-skillfish-governor-smu"
+
+    if ! systemctl is-enabled cyan-skillfish-governor-smu.service &>/dev/null && \
+       ! pacman -Qq cyan-skillfish-governor-smu &>/dev/null; then
+        print_info "GPU governor does not appear to be installed — nothing to revert."
+        return 0
+    fi
+
+    if ! confirm "This will stop, disable, and remove the cyan-skillfish-governor-smu service. Proceed?"; then
+        print_info "Cancelled."
+        return 0
+    fi
+
+    print_info "Stopping and disabling cyan-skillfish-governor-smu service..."
+    systemctl stop cyan-skillfish-governor-smu.service 2>/dev/null || true
+    systemctl disable cyan-skillfish-governor-smu.service 2>/dev/null || true
+
+    print_info "Removing package via paru (as $REAL_USER)..."
+    sudo -u "$REAL_USER" paru -Rns --noconfirm cyan-skillfish-governor-smu 2>/dev/null || true
+
+    print_success "GPU governor removed successfully."
+}
+
 
 show_revert_menu() {
     print_banner
     print_section "Revert / Undo"
     echo -e "  ${DIM}Undo previously applied settings and restore defaults.${RESET}\n"
-    print_item  "1"  "Revert ZSWAP"        "Remove zswap, re-enable ZRAM"
-    print_item  "2"  "Revert Mitigations"  "Re-enable CPU security mitigations"
-    print_item  "3"  "Revert loglevel"     "Restore loglevel to default (3)"
-    print_item  "4"  "Revert ACPI Fix"     "Remove ACPI fix and pacman hook"
-    print_item  "5"  "CachyOS Kernel"      "Replace Deckify kernel with standard CachyOS"
-    print_item  "6"  "DolphinBar Setup"    "Remove DolphinBar udev rules"
+    print_item  "1"  "Revert CPU Governor" "Disable and remove bc250-smu-oc service"
+    print_item  "2"  "Revert GPU Governor" "Disable and remove cyan-skillfish-governor-smu"
+    print_item  "3"  "Revert ZSWAP"        "Remove zswap, swapfile & re-enable ZRAM"
+    print_item  "4"  "Revert loglevel"     "Restore loglevel to default (3)"
+    print_item  "5"  "Revert Mitigations"  "Re-enable CPU security mitigations"
+    print_item  "6"  "Revert ACPI Fix"     "Remove ACPI fix and pacman hook"
+    print_item  "7"  "DolphinBar Setup"    "Remove DolphinBar udev rules"
     echo ""
     print_item  "0"  "Back"                "Return to main menu"
     echo ""
@@ -1637,12 +1725,13 @@ run_revert_menu() {
         read -rp "$(echo -e "  ${BOLD}${WHITE}Enter selection:${RESET} ")" rev_choice
 
         case "${rev_choice^^}" in
-            1) run_revert_zswap;              press_enter ;;
-            2) run_revert_mitigations;        press_enter ;;
-            3) run_revert_loglevel;           press_enter ;;
-            4) run_revert_acpi_fix;           press_enter ;;
-            5) run_switch_to_default_kernel;  press_enter ;;
-            6) run_revert_dolphinbar;         press_enter ;;
+            1) run_revert_cpu_governor;       press_enter ;;
+            2) run_revert_gpu_governor;       press_enter ;;
+            3) run_revert_zswap;              press_enter ;;
+            4) run_revert_loglevel;           press_enter ;;
+            5) run_revert_mitigations;        press_enter ;;
+            6) run_revert_acpi_fix;           press_enter ;;
+            7) run_revert_dolphinbar;         press_enter ;;
             0) return ;;
             *)
                 print_error "Invalid selection: '$rev_choice'"
@@ -1661,8 +1750,8 @@ show_menu() {
     print_item  "2"  "CPU Governor"        "bc250-smu-oc CPU overclock service"
     print_item  "3"  "GPU Governor"        "cyan-skillfish GPU governor service"
     print_item  "4"  "Enable Swap"         "16G Btrfs swapfile, swappiness=180"
-    print_item  "5"  "Hide RDSEED Warning" "Set loglevel=0 in /boot/limine.conf"
-    print_item  "6"  "ZRAM -> ZSWAP"       "Disable ZRAM, enable ZSWAP w/ lz4"
+    print_item  "5"  "ZRAM -> ZSWAP"       "Disable ZRAM, enable ZSWAP w/ lz4"
+    print_item  "6"  "Hide RDSEED Warning" "Set loglevel=0 in /boot/limine.conf"
     print_item  "7"  "Disable Mitigations" "Add mitigations=off to limine.conf"
     print_item  "A"  "Run All (2-7)"       "Run all setup tasks in sequence"
     echo ""
@@ -1688,8 +1777,8 @@ while true; do
         2) run_cpu_governor;              press_enter ;;
         3) run_gpu_governor;              press_enter ;;
         4) run_enable_swap;               press_enter ;;
-        5) run_set_loglevel;              press_enter ;;
-        6) run_disable_zram_enable_zswap; press_enter ;;
+        5) run_disable_zram_enable_zswap; press_enter ;;
+        6) run_set_loglevel;              press_enter ;;
         7) run_disable_mitigations;       press_enter ;;
         A) run_all;                       press_enter ;;
         R) run_revert_menu ;;
