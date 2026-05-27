@@ -588,14 +588,17 @@ EOF
 
 write_gpu_overclock_1500mhz() { cat > "$GPU_TMPFILE" <<'EOF'
 [timing.intervals]
-sample = 500
-adjust = 200_000
+sample = 250
+adjust = 100_000
 [gpu-usage]
 fix-metrics = true
 method = "busy-flag" # "busy-flag" or "process"
 flush-every = 10
 [gpu]
 set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 1500
 [timing.ramp-rates]
 normal = 1
 burst = 50
@@ -605,14 +608,11 @@ down-events = 5
 [frequency-thresholds]
 adjust = 10
 [load-target]
-upper = 0.60
-lower = 0.40
+upper = 0.65
+lower = 0.50
 [temperature]
 throttling = 80
 throttling_recovery = 75
-[[safe-points]]
-frequency = 400
-voltage = 700
 [[safe-points]]
 frequency = 500
 voltage = 700
@@ -628,16 +628,19 @@ voltage = 900
 EOF
 }
 
-write_gpu_overclock_2000mhz() { cat > "$GPU_TMPFILE" <<'EOF'
+write_gpu_overclock_1600mhz() { cat > "$GPU_TMPFILE" <<'EOF'
 [timing.intervals]
-sample = 500
-adjust = 200_000
+sample = 250
+adjust = 100_000
 [gpu-usage]
 fix-metrics = true
 method = "busy-flag" # "busy-flag" or "process"
 flush-every = 10
 [gpu]
 set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 1600
 [timing.ramp-rates]
 normal = 1
 burst = 50
@@ -647,14 +650,158 @@ down-events = 5
 [frequency-thresholds]
 adjust = 10
 [load-target]
-upper = 0.60
-lower = 0.40
+upper = 0.65
+lower = 0.50
 [temperature]
 throttling = 80
 throttling_recovery = 75
 [[safe-points]]
-frequency = 400
+frequency = 500
 voltage = 700
+[[safe-points]]
+frequency = 1000
+voltage = 800
+[[safe-points]]
+frequency = 1175
+voltage = 850
+[[safe-points]]
+frequency = 1500
+voltage = 900
+[[safe-points]]
+frequency = 1600
+voltage = 910
+EOF
+}
+
+write_gpu_overclock_1750mhz() { cat > "$GPU_TMPFILE" <<'EOF'
+[timing.intervals]
+sample = 250
+adjust = 100_000
+[gpu-usage]
+fix-metrics = true
+method = "busy-flag" # "busy-flag" or "process"
+flush-every = 10
+[gpu]
+set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 1750
+[timing.ramp-rates]
+normal = 1
+burst = 50
+[timing]
+burst-samples = 60
+down-events = 5
+[frequency-thresholds]
+adjust = 10
+[load-target]
+upper = 0.65
+lower = 0.50
+[temperature]
+throttling = 80
+throttling_recovery = 75
+[[safe-points]]
+frequency = 500
+voltage = 700
+[[safe-points]]
+frequency = 1000
+voltage = 800
+[[safe-points]]
+frequency = 1175
+voltage = 850
+[[safe-points]]
+frequency = 1500
+voltage = 900
+[[safe-points]]
+frequency = 1600
+voltage = 910
+[[safe-points]]
+frequency = 1700
+voltage = 920
+[[safe-points]]
+frequency = 1750
+voltage = 925
+EOF
+}
+
+write_gpu_overclock_1850mhz() { cat > "$GPU_TMPFILE" <<'EOF'
+[timing.intervals]
+sample = 250
+adjust = 100_000
+[gpu-usage]
+fix-metrics = true
+method = "busy-flag" # "busy-flag" or "process"
+flush-every = 10
+[gpu]
+set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 1850
+[timing.ramp-rates]
+normal = 1
+burst = 50
+[timing]
+burst-samples = 60
+down-events = 5
+[frequency-thresholds]
+adjust = 10
+[load-target]
+upper = 0.65
+lower = 0.50
+[temperature]
+throttling = 80
+throttling_recovery = 75
+[[safe-points]]
+frequency = 500
+voltage = 700
+[[safe-points]]
+frequency = 1000
+voltage = 800
+[[safe-points]]
+frequency = 1175
+voltage = 850
+[[safe-points]]
+frequency = 1500
+voltage = 900
+[[safe-points]]
+frequency = 1600
+voltage = 910
+[[safe-points]]
+frequency = 1700
+voltage = 920
+[[safe-points]]
+frequency = 1850
+voltage = 930
+EOF
+}
+
+write_gpu_overclock_2000mhz() { cat > "$GPU_TMPFILE" <<'EOF'
+[timing.intervals]
+sample = 250
+adjust = 100_000
+[gpu-usage]
+fix-metrics = true
+method = "busy-flag" # "busy-flag" or "process"
+flush-every = 10
+[gpu]
+set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 2000
+[timing.ramp-rates]
+normal = 1
+burst = 50
+[timing]
+burst-samples = 60
+down-events = 5
+[frequency-thresholds]
+adjust = 10
+[load-target]
+upper = 0.65
+lower = 0.50
+[temperature]
+throttling = 80
+throttling_recovery = 75
 [[safe-points]]
 frequency = 500
 voltage = 700
@@ -684,14 +831,17 @@ EOF
 
 write_gpu_overclock_2100mhz() { cat > "$GPU_TMPFILE" <<'EOF'
 [timing.intervals]
-sample = 500
-adjust = 200_000
+sample = 250
+adjust = 100_000
 [gpu-usage]
 fix-metrics = true
 method = "busy-flag" # "busy-flag" or "process"
 flush-every = 10
 [gpu]
 set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 2100
 [timing.ramp-rates]
 normal = 1
 burst = 50
@@ -701,14 +851,11 @@ down-events = 5
 [frequency-thresholds]
 adjust = 10
 [load-target]
-upper = 0.60
-lower = 0.40
+upper = 0.65
+lower = 0.50
 [temperature]
 throttling = 80
 throttling_recovery = 75
-[[safe-points]]
-frequency = 400
-voltage = 700
 [[safe-points]]
 frequency = 500
 voltage = 700
@@ -744,14 +891,17 @@ EOF
 
 write_gpu_overclock_2300mhz() { cat > "$GPU_TMPFILE" <<'EOF'
 [timing.intervals]
-sample = 500
-adjust = 200_000
+sample = 250
+adjust = 100_000
 [gpu-usage]
 fix-metrics = true
 method = "busy-flag" # "busy-flag" or "process"
 flush-every = 10
 [gpu]
 set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 2300
 [timing.ramp-rates]
 normal = 1
 burst = 50
@@ -761,14 +911,11 @@ down-events = 5
 [frequency-thresholds]
 adjust = 10
 [load-target]
-upper = 0.60
-lower = 0.40
+upper = 0.65
+lower = 0.50
 [temperature]
 throttling = 90
 throttling_recovery = 85
-[[safe-points]]
-frequency = 400
-voltage = 700
 [[safe-points]]
 frequency = 500
 voltage = 700
@@ -819,14 +966,17 @@ EOF
 
 write_gpu_overclock_2350mhz() { cat > "$GPU_TMPFILE" <<'EOF'
 [timing.intervals]
-sample = 500
-adjust = 200_000
+sample = 250
+adjust = 100_000
 [gpu-usage]
 fix-metrics = true
 method = "busy-flag" # "busy-flag" or "process"
 flush-every = 10
 [gpu]
 set-method = "smu"  # "smu" or "kernel"
+[frequency-range]
+min = 500
+max = 2350
 [timing.ramp-rates]
 normal = 1
 burst = 50
@@ -836,14 +986,11 @@ down-events = 5
 [frequency-thresholds]
 adjust = 10
 [load-target]
-upper = 0.60
-lower = 0.40
+upper = 0.65
+lower = 0.50
 [temperature]
 throttling = 90
 throttling_recovery = 85
-[[safe-points]]
-frequency = 400
-voltage = 700
 [[safe-points]]
 frequency = 500
 voltage = 700
@@ -970,9 +1117,9 @@ oc_match_preset() {
     cpu_freq=$(awk -F'= ' '/^frequency/{print $2}' "$CPU_DEST" 2>/dev/null | tr -d ' ')
     gpu_freq=$(awk -F'= ' '/^frequency/{print $2}' "$GPU_DEST" 2>/dev/null | tr -d ' ' | tail -1)
 
-    # Preset CPU MHz values matching PRESET_CPU_WRITERS order
-    local preset_cpu_freqs=(4000 3850 3500 3500 3500)
-    local preset_gpu_freqs=(2350 2100 2100 2000 1500)
+    # Preset CPU MHz values matching PRESET_CPU_WRITERS order (slowest to fastest)
+    local preset_cpu_freqs=(3500 3500 3500 3500 3500 3500 3850 4000)
+    local preset_gpu_freqs=(1500 1600 1750 1850 2000 2100 2100 2350)
 
     for i in "${!PRESET_NAMES[@]}"; do
         if [[ "$cpu_freq" == "${preset_cpu_freqs[$i]}" && "$gpu_freq" == "${preset_gpu_freqs[$i]}" ]]; then
@@ -983,30 +1130,67 @@ oc_match_preset() {
     echo "Custom"
 }
 
-PRESET_NAMES=("High" "Medium-High" "Medium-Low" "Low" "Stock - Failsafe")
+PRESET_NAMES=("Stock" "Mild" "Moderate" "Strong" "Aggressive" "Extreme I ⚠" "Extreme II ⚠" "Extreme III ⚠")
 PRESET_DESCS=(
-    "CPU 4GHz, GPU 2350MHz — 90°C"
-    "CPU 3.85GHz, GPU 2100MHz — 90°C"
-    "CPU 3.5GHz, GPU 2100MHz — 80°C"
-    "CPU 3.5GHz, GPU 2000MHz — 80°C"
     "CPU 3.5GHz, GPU 1500MHz — 80°C"
+    "CPU 3.5GHz, GPU 1600MHz — 80°C"
+    "CPU 3.5GHz, GPU 1750MHz — 80°C"
+    "CPU 3.5GHz, GPU 1850MHz — 80°C"
+    "CPU 3.5GHz, GPU 2000MHz — 80°C"
+    "CPU 3.5GHz, GPU 2100MHz — 80°C  [HIGH RISK]"
+    "CPU 3.85GHz, GPU 2100MHz — 80°C  [HIGH RISK]"
+    "CPU 4GHz, GPU 2350MHz — 90°C  [HIGH RISK]"
 )
-PRESET_CPU_WRITERS=(write_cpu_overclock_4ghz write_cpu_overclock_3_85ghz write_cpu_undervolt_3_5ghz write_cpu_undervolt_3_5ghz write_cpu_undervolt_3_5ghz)
-PRESET_GPU_WRITERS=(write_gpu_overclock_2350mhz write_gpu_overclock_2100mhz write_gpu_overclock_2100mhz write_gpu_overclock_2000mhz write_gpu_overclock_1500mhz)
+PRESET_CPU_WRITERS=(write_cpu_undervolt_3_5ghz write_cpu_undervolt_3_5ghz write_cpu_undervolt_3_5ghz write_cpu_undervolt_3_5ghz write_cpu_undervolt_3_5ghz write_cpu_undervolt_3_5ghz write_cpu_overclock_3_85ghz write_cpu_overclock_4ghz)
+PRESET_GPU_WRITERS=(write_gpu_overclock_1500mhz write_gpu_overclock_1600mhz write_gpu_overclock_1750mhz write_gpu_overclock_1850mhz write_gpu_overclock_2000mhz write_gpu_overclock_2100mhz write_gpu_overclock_2100mhz write_gpu_overclock_2350mhz)
+# Presets 6-8 (index 5-7) are high-risk and require OC acknowledgement
+PRESET_HIGH_RISK_THRESHOLD=5
 
 CPU_NAMES=("Undervolt 3.5 GHz (stock)" "Overclock 3.85 GHz" "Overclock 4 GHz")
 CPU_DESCS=("3500 MHz, scale -22, max 80°C" "3850 MHz, scale -30, max 90°C" "4000 MHz, scale -37, max 90°C")
 CPU_WRITERS=(write_cpu_undervolt_3_5ghz write_cpu_overclock_3_85ghz write_cpu_overclock_4ghz)
 
-GPU_NAMES=("Overclock 1500 MHz" "Overclock 2000 MHz" "Overclock 2100 MHz" "Overclock 2300 MHz" "Overclock 2350 MHz")
+GPU_NAMES=("1500 MHz" "1600 MHz" "1750 MHz" "1850 MHz" "2000 MHz" "2100 MHz ⚠" "2300 MHz ⚠" "2350 MHz ⚠")
 GPU_DESCS=(
     "throttle 80°C — conservative"
+    "throttle 80°C — moderate-low"
     "throttle 80°C — moderate"
     "throttle 80°C — moderate-high"
-    "throttle 90°C — high"
-    "throttle 90°C — aggressive"
+    "throttle 80°C — standard ceiling"
+    "throttle 80°C — HIGH RISK"
+    "throttle 90°C — HIGH RISK"
+    "throttle 90°C — HIGH RISK"
 )
-GPU_WRITERS=(write_gpu_overclock_1500mhz write_gpu_overclock_2000mhz write_gpu_overclock_2100mhz write_gpu_overclock_2300mhz write_gpu_overclock_2350mhz)
+GPU_WRITERS=(write_gpu_overclock_1500mhz write_gpu_overclock_1600mhz write_gpu_overclock_1750mhz write_gpu_overclock_1850mhz write_gpu_overclock_2000mhz write_gpu_overclock_2100mhz write_gpu_overclock_2300mhz write_gpu_overclock_2350mhz)
+# GPU profiles at index 5+ (2100 MHz and above) require OC acknowledgement
+GPU_HIGH_RISK_THRESHOLD=5
+
+# Display high-risk warning and require "OC" acknowledgement
+# Returns 0 if acknowledged, 1 if cancelled
+oc_warn_high_risk() {
+    echo ""
+    echo -e "  ${BOLD}${RED}⚠  WARNING: HIGH-RISK OVERCLOCK PROFILE${RESET}"
+    echo ""
+    echo -e "  ${WHITE}Unlocking additional compute units (38-40 CU) significantly increases"
+    echo -e "  power draw. Combined with high GPU frequencies, this can exceed the"
+    echo -e "  safe capacity of your power delivery hardware. The 8-pin connector"
+    echo -e "  and its wiring are particularly vulnerable — overloading them can"
+    echo -e "  cause the connector to melt or the wires to overheat, resulting in"
+    echo -e "  permanent damage or fire risk."
+    echo ""
+    echo -e "  Only proceed if you have verified your PSU, cabling, and cooling"
+    echo -e "  can handle the increased load of your CU configuration.${RESET}"
+    echo ""
+    echo -e "  ${DIM}Type ${RESET}${BOLD}${YELLOW}OC${RESET}${DIM} to accept full responsibility and proceed, or press Enter to cancel.${RESET}"
+    echo ""
+    read -rp "  → " ack
+    if [[ "$ack" == "OC" ]]; then
+        return 0
+    else
+        print_info "Cancelled."
+        return 1
+    fi
+}
 
 oc_print_summary() {
     local cpu_name="$1" cpu_desc="$2" gpu_name="$3" gpu_desc="$4"
@@ -1027,6 +1211,12 @@ oc_apply_preset() {
     echo ""
     echo -e "  ${BOLD}${WHITE}Selected:${RESET} ${name} — ${desc}"
     echo ""
+
+    # Gate high-risk presets (index 5-7, i.e. presets 6-8)
+    if (( idx >= PRESET_HIGH_RISK_THRESHOLD )); then
+        oc_warn_high_risk || return 0
+    fi
+
     if ! confirm "Apply this preset?"; then
         print_info "Cancelled."
         return 0
@@ -1087,6 +1277,11 @@ oc_apply_custom() {
     local cpu_idx=$(( cpu_choice - 1 )) gpu_idx=$(( gpu_choice - 1 ))
     local custom_temp=""
 
+    # Gate high-risk GPU profiles (index 5+, i.e. 2100 MHz and above)
+    if (( gpu_idx >= GPU_HIGH_RISK_THRESHOLD )); then
+        oc_warn_high_risk || return 0
+    fi
+
     # Single temperature prompt — applies to both CPU max and GPU throttle
     echo ""
     read -rp "$(echo -e "  ${WHITE}Override temperature limit? [y/N]:${RESET} ")" yn
@@ -1135,19 +1330,31 @@ run_overclock_menu() {
         print_section "Performance Profile Menu"
         echo -e "  ${DIM}Active: $(oc_match_preset) — $(oc_active_profile)${RESET}"
         echo ""
+        print_section "Standard Profiles"
         for i in "${!PRESET_NAMES[@]}"; do
+            if (( i >= PRESET_HIGH_RISK_THRESHOLD )); then
+                continue
+            fi
             print_item "$((i+1))" "${PRESET_NAMES[$i]}" "${PRESET_DESCS[$i]}"
         done
         echo ""
-        print_item "C" "Custom"           "Mix & match CPU and GPU profiles"
-        print_item "E" "Edit with Kate"  "Manually edit GPU overclock"
+        print_section "High-Risk Profiles  ⚠  Requires OC acknowledgement"
+        for i in "${!PRESET_NAMES[@]}"; do
+            if (( i < PRESET_HIGH_RISK_THRESHOLD )); then
+                continue
+            fi
+            print_item "$((i+1))" "${PRESET_NAMES[$i]}" "${PRESET_DESCS[$i]}"
+        done
+        echo ""
+        print_item "C" "Custom"            "Mix & match CPU and GPU profiles"
+        print_item "E" "Edit with Kate"    "Manually edit GPU config"
         print_item "0" "Back to Main Menu" ""
         echo ""
         echo -e "  ${BOLD}${CYAN}══════════════════════════════════════════════════════════════${RESET}"
         read -rp "$(echo -e "  ${BOLD}${WHITE}Enter selection:${RESET} ")" oc_choice
 
         case "${oc_choice^^}" in
-            C) oc_apply_custom;      press_enter ;;
+            C) oc_apply_custom;         press_enter ;;
             E) oc_edit_gpu_config_kate; press_enter ;;
             0) return 0 ;;
             *)
