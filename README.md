@@ -22,7 +22,7 @@ In desktop mode run the below in the terminal(Konsole):
 curl -sSLO https://raw.githubusercontent.com/redbeard1083/bc250-toolkit/main/bc250-toolkit.sh && chmod +x bc250-toolkit.sh && ./bc250-toolkit.sh
 </pre>
 
-
+```
  ╔══════════════════════════════════════════════════════════════╗
   ║                                                              ║
   ║              CachyOS BC250 Toolkit                           ║
@@ -62,4 +62,6 @@ curl -sSLO https://raw.githubusercontent.com/redbeard1083/bc250-toolkit/main/bc2
   [ 0]  Exit                
 
   ══════════════════════════════════════════════════════════════
+...
+...
 
