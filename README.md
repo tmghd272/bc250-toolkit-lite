@@ -21,7 +21,8 @@ Please use with caution.
 9. **NCT Menu** – Manage the NCT6687 sensor driver. Install or uninstall the driver and optionally blacklist the in-kernel `nct6683` driver. The NCT6687 driver provides fan control support that is unavailable with the stock driver.
 10. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
 11. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
-12. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governors and drivers
+12. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
+13. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
 
 ## Usage
 
@@ -71,6 +72,4 @@ curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-t
   [ 0]  Exit
 
   ══════════════════════════════════════════════════════════════
-...
-...
-
+```
