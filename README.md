@@ -27,9 +27,9 @@ Please use with caution.
 
 In Desktop Mode, run the following command in Konsole:
 
-<pre>
+```
 curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-toolkit-lite.sh && chmod +x bc250-toolkit-lite.sh && ./bc250-toolkit-lite.sh
-</pre>
+```
 
 ```
 
