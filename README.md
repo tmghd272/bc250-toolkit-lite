@@ -18,7 +18,7 @@ Please use with caution.
 6. **Enable ZSWAP** – Enables compressed RAM caching for swapped memory pages
 7. **Disable Mitigations** – Improves CPU performance at the cost of reduced security
 8. **Toggle Boot Mode** – Switches CachyOS Deckify between Steam Gaming Mode and KDE Plasma Desktop Mode
-9. **NCT Menu** – Manage the NCT6687 sensor driver. Install or uninstall the driver and optionally blacklist the in-kernel `nct6683` driver. The NCT6687 driver provides fan control support that is unavailable with the stock driver.
+9. **NCT Menu** – Manage the NCT6687 sensor driver by [Fred78290](https://github.com/Fred78290/nct6687d). Install or uninstall the driver, and optionally blacklist the in-kernel `nct6683` driver. NCT6687 provides fan control support that is unavailable with the stock driver.
 10. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
 11. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
 12. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
