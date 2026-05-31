@@ -68,7 +68,7 @@ curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-t
   System
   ──────────────────────────────────────────────────────────────
   [ S]  Status              Current system summary
-  [ M]  Module Checker      View /etc/modules-load.d/ & /etc/modprobe.d/
+  [ M]  Module Checker      View current module, driver, and WirePlumber configuration
   [ 0]  Exit
 
   ══════════════════════════════════════════════════════════════
