@@ -1,48 +1,57 @@
-# bc250-toolkit
-Setup script for BC250 on CachyOS
+# bc250-toolkit-lite
 
-Disclaimer:  I am not responsible for any damages caused by use of this script.  Please review it to make sure the overclocking configs are compatible with your board. Unlocking compute units will increase power draw and heat.  You are responsible for your own power and cooling setups.  Misuse of this script could cause physical damage to your board.
+Setup script for the BC250 on CachyOS.
 
-### **Must be using Limine boot loader for all functions in the script to work.**
+A lightweight version of the BC250 Toolkit that focuses on installing essential drivers, fixes, and utilities. The overclock menu has been removed.
 
-This script will allow easy setup of the BC-250 on CachyOS.  It has been tested with the handheld edition, but should also work on any CachyOs version as long as the Limine bootloader is used.  Inspired by the similar script for Bazzite:  https://github.com/NexGen-3D-Printing/SteamMachine
+### **You must be using the Limine bootloader for all functions in this script to work properly.**
 
-It does the following:
-1. Install CPU governor: https://github.com/bc250-collective/bc250_smu_oc/
-2. Install GPU governor: https://github.com/filippor/cyan-skillfish-governor
-3. Enable swap
-4. Hide the RDSEED error displayed on boot.
-5. Enable ZSWAP
-6. Easily change CPU and GPU overclock settings on the fly
-7. Displays a status window showing you your current settings.
-8. Beta: Unlock compute units thanks to: https://github.com/WinnieLV/bc250-cu-live-manager
+Please use with caution.
 
-In desktop mode run the below in the terminal(Konsole):
+## Features
+
+1. **CPU Governor** – Installs `bc250_smu_oc` by [bc250-collective](https://github.com/bc250-collective/bc250_smu_oc/)
+2. **GPU Governor** – Installs `cyan-skillfish-governor-smu` by [filippor](https://github.com/filippor/cyan-skillfish-governor)
+3. **CU Live Manager** – Launches the Compute Units Live Manager (`bc250-cu-live-manager.sh`) by [WinnieLV](https://github.com/WinnieLV/bc250-cu-live-manager)
+4. **Enable Swap** – Creates a dedicated swap file used as virtual memory
+5. **Hide RDSEED Warning** – Hides the RDSEED warning message shown during boot
+6. **Enable ZSWAP** – Enables compressed RAM caching for swapped memory pages
+7. **Disable Mitigations** – Improves CPU performance at the cost of reduced security
+8. **Toggle Boot Mode** – Switches CachyOS Deckify between Steam Gaming Mode and KDE Plasma Desktop Mode
+9. **NCT Menu** – Manage the NCT6687 sensor driver. Install or uninstall the driver and optionally blacklist the in-kernel `nct6683` driver. The NCT6687 driver provides fan control support that is unavailable with the stock driver.
+10. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
+11. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
+12. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governors and drivers
+
+## Usage
+
+In Desktop Mode, run the following command in Konsole:
+
 <pre>
-curl -sSLO https://raw.githubusercontent.com/redbeard1083/bc250-toolkit/main/bc250-toolkit.sh && chmod +x bc250-toolkit.sh && ./bc250-toolkit.sh
+curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-toolkit-lite.sh && chmod +x bc250-toolkit-lite.sh && ./bc250-toolkit-lite.sh
 </pre>
 
 ```
+
   ╔══════════════════════════════════════════════════════════════╗
   ║                                                              ║
-  ║              CachyOS BC250 Toolkit                           ║
-  ║           System Setup & Configuration                       ║
+  ║                 CachyOS BC250 Toolkit Lite                   ║
+  ║              Kernel: {kernel}-cachyos-deckify                ║
   ║                                                              ║
   ╚══════════════════════════════════════════════════════════════╝
 
-  Performance
-  ──────────────────────────────────────────────────────────────
-  [ 1]  Overclock Menu      CPU & GPU performance profiles
-
   Setup Tasks
   ──────────────────────────────────────────────────────────────
-  [ 2]  CPU Governor        bc250-smu-oc CPU overclock service
-  [ 3]  GPU Governor        cyan-skillfish GPU governor service
+  [ 1]  CPU Governor        bc250-smu-oc CPU overclock service
+  [ 2]  GPU Governor        cyan-skillfish GPU governor service
+  [ 3]  CU Live Manager     Compute Units Live Manager by WinnieLV
+
+  Limine Configuration
+  ──────────────────────────────────────────────────────────────
   [ 4]  Enable Swap         16G Btrfs swapfile, swappiness=180
   [ 5]  ZRAM -> ZSWAP       Disable ZRAM, enable ZSWAP w/ lz4
   [ 6]  Hide RDSEED Warning Set loglevel=0 in /boot/limine.conf
   [ 7]  Disable Mitigations Add mitigations=off to limine.conf
-  [ A]  Run All (2-7)       Run all setup tasks in sequence
 
   Revert / Undo
   ──────────────────────────────────────────────────────────────
@@ -50,16 +59,16 @@ curl -sSLO https://raw.githubusercontent.com/redbeard1083/bc250-toolkit/main/bc2
 
   Additional Tools
   ──────────────────────────────────────────────────────────────
-  [ E]  Additional Tools    Additional system utilities
-
-  ⚠  Experimental/Danger Zone
-  ──────────────────────────────────────────────────────────────
-  [ X]  Compute Units Unlock 
+  [ B]  Toggle Boot Mode    Switch between Game Mode & Desktop
+  [ N]  NCT Menu            NCT6687 sensor driver management
+  [ D]  DP Audio Fix        Fix DisplayPort audio delay via WirePlumber
+  [ W]  Realtek WiFi USB    RTL88x2BU driver — install, upgrade, uninstall
 
   System
   ──────────────────────────────────────────────────────────────
   [ S]  Status              Current system summary
-  [ 0]  Exit                
+  [ M]  Module Checker      View /etc/modules-load.d/ & /etc/modprobe.d/
+  [ 0]  Exit
 
   ══════════════════════════════════════════════════════════════
 ...
