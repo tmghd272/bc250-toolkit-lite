@@ -1255,7 +1255,7 @@ show_menu() {
     echo ""
     print_section "System"
     print_item  "S"  "Status"              "Current system summary"
-    print_item  "M"  "Module Checker"      "View /etc/modules-load.d/ & /etc/modprobe.d/"
+    print_item  "M"  "Module Checker"      "View current module, driver, and WirePlumber configuration"
     print_item  "0"  "Exit"                ""
     echo ""
     echo -e "  ${BOLD}${CYAN}══════════════════════════════════════════════════════════════${RESET}"
