@@ -293,6 +293,35 @@ run_disable_mitigations() {
     echo -e "  ${DIM}Note: this disables Spectre/Meltdown mitigations for a performance gain.${RESET}\n"
 }
 
+run_overcommit_memlock() {
+    local SYSCTL_CONF="/etc/sysctl.d/99-overcommit.conf"
+    local LIMITS_CONF="/etc/security/limits.d/99-memlock.conf"
+    print_step "08" "Setting Overcommit Memory & Unlimited Memlock"
+
+    if [[ -f "$SYSCTL_CONF" ]]; then
+        print_info "$SYSCTL_CONF already exists — skipping."
+    else
+        print_info "Writing vm.overcommit_memory=1 to $SYSCTL_CONF..."
+        echo 'vm.overcommit_memory = 1' > "$SYSCTL_CONF"
+        print_info "Applying sysctl setting..."
+        sysctl --system > /dev/null
+    fi
+
+    if [[ -f "$LIMITS_CONF" ]]; then
+        print_info "$LIMITS_CONF already exists — skipping."
+    else
+        print_info "Writing unlimited memlock to $LIMITS_CONF..."
+        {
+            echo -e "*\tsoft\tmemlock\tunlimited"
+            echo -e "*\thard\tmemlock\tunlimited"
+        } > "$LIMITS_CONF"
+    fi
+
+    print_success "Overcommit memory & memlock configured!"
+    echo -e "  ${DIM}memlock takes effect on next login/session — verify after re-login with: ulimit -l${RESET}\n"
+    echo -e "  ${DIM}Verify overcommit now with: sysctl vm.overcommit_memory${RESET}\n"
+}
+
 # ==============================================================================
 # REVERT FUNCTIONS
 # ==============================================================================
@@ -454,6 +483,37 @@ run_revert_mitigations() {
     print_info "Regenerating /boot/limine.conf..."
     limine-update
     print_success "mitigations=off removed. Reboot to re-enable CPU security mitigations."
+}
+
+run_revert_overcommit_memlock() {
+    local SYSCTL_CONF="/etc/sysctl.d/99-overcommit.conf"
+    local LIMITS_CONF="/etc/security/limits.d/99-memlock.conf"
+    print_step "R-7" "Revert Overcommit Memory & Memlock"
+
+    if [[ ! -f "$SYSCTL_CONF" && ! -f "$LIMITS_CONF" ]]; then
+        print_info "Neither config file found — nothing to revert."
+        return 0
+    fi
+
+    if ! confirm "This will remove $SYSCTL_CONF and $LIMITS_CONF and reset overcommit_memory to default (0). Proceed?"; then
+        print_info "Cancelled."
+        return 0
+    fi
+
+    if [[ -f "$SYSCTL_CONF" ]]; then
+        print_info "Removing $SYSCTL_CONF..."
+        rm -f "$SYSCTL_CONF"
+        sysctl vm.overcommit_memory=0 > /dev/null
+        print_info "overcommit_memory reset to default (0)."
+    fi
+
+    if [[ -f "$LIMITS_CONF" ]]; then
+        print_info "Removing $LIMITS_CONF..."
+        rm -f "$LIMITS_CONF"
+        print_info "memlock limit removed (takes effect on next login)."
+    fi
+
+    print_success "Overcommit/memlock settings reverted."
 }
 
 # ==============================================================================
@@ -955,6 +1015,17 @@ run_status() {
     fi
     echo ""
 
+    local overcommit overcommit_color
+    overcommit=$(cat /proc/sys/vm/overcommit_memory 2>/dev/null || echo "N/A")
+    [[ "$overcommit" == "1" ]] && overcommit_color="$GREEN" || overcommit_color="$DIM"
+    echo -e "  ${CYAN}Overcommit Memory${RESET}  ${overcommit_color}${overcommit}${RESET}"
+    local memlock_conf="/etc/security/limits.d/99-memlock.conf" memlock_status
+    [[ -f "$memlock_conf" ]] \
+        && memlock_status="${GREEN}configured${RESET} ${DIM}(unlimited, active next login)${RESET}" \
+        || memlock_status="${DIM}not configured${RESET}"
+    echo -e "  ${CYAN}Memlock Limit${RESET}      ${memlock_status}"
+    echo ""
+
     # --- Disk Space ---
     echo -e "  ${BOLD}${YELLOW}Disk Space${RESET}"
     echo -e "  ${DIM}──────────────────────────────────────────────────────────────${RESET}"
@@ -1201,6 +1272,7 @@ show_revert_menu() {
     print_item "4" "Revert ZSWAP"        "Remove zswap params & re-enable ZRAM"
     print_item "5" "Revert loglevel"     "Restore loglevel to default (3)"
     print_item "6" "Revert Mitigations"  "Re-enable CPU security mitigations"
+    print_item "7" "Revert Overcommit/Memlock" "Remove overcommit & memlock configs"
     echo ""
     print_item "0" "Back"                "Return to main menu"
     echo ""
@@ -1218,6 +1290,7 @@ run_revert_menu() {
             4) run_revert_zswap;        press_enter ;;
             5) run_revert_loglevel;     press_enter ;;
             6) run_revert_mitigations;  press_enter ;;
+            7) run_revert_overcommit_memlock; press_enter ;;
             0) return ;;
             *)
                 print_error "Invalid selection: '$rev_choice'"
@@ -1243,6 +1316,7 @@ show_menu() {
     print_item  "5"  "ZRAM -> ZSWAP"       "Disable ZRAM, enable ZSWAP w/ lz4"
     print_item  "6"  "Hide RDSEED Warning" "Set loglevel=0 in /boot/limine.conf"
     print_item  "7"  "Disable Mitigations" "Add mitigations=off to limine.conf"
+    print_item  "8"  "Overcommit/Memlock"  "vm.overcommit_memory=1 & unlimited memlock"
     echo ""
     print_section "Revert / Undo"
     print_item  "R"  "Revert Menu"         "Undo previously applied settings"
@@ -1273,6 +1347,7 @@ while true; do
         5) run_disable_zram_enable_zswap; press_enter ;;
         6) run_set_loglevel;              press_enter ;;
         7) run_disable_mitigations;       press_enter ;;
+        8) run_overcommit_memlock;        press_enter ;;
         R) run_revert_menu ;;
         B) run_toggle_boot_mode;          press_enter ;;
         N) run_nct_menu ;;
