@@ -17,12 +17,13 @@ Please use with caution.
 5. **Hide RDSEED Warning** – Hides the RDSEED warning message shown during boot
 6. **Enable ZSWAP** – Enables compressed RAM caching for swapped memory pages
 7. **Disable Mitigations** – Improves CPU performance at the cost of reduced security
-8. **Toggle Boot Mode** – Switches CachyOS Deckify between Steam Gaming Mode and KDE Plasma Desktop Mode
-9. **NCT Menu** – Manage the NCT6687 sensor driver by [Fred78290](https://github.com/Fred78290/nct6687d). Install or uninstall the driver, and optionally blacklist the in-kernel `nct6683` driver. NCT6687 provides fan control support that is unavailable with the stock driver.
-10. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
-11. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
-12. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
-13. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
+8. **Overcommit / Memlock** — Helps applications manage memory more reliably, which can improve stability in some emulators and Wine programs and may reduce memory-related crashes or freezes
+9. **Toggle Boot Mode** – Switches CachyOS Deckify between Steam Gaming Mode and KDE Plasma Desktop Mode
+10. **NCT Menu** – Manage the NCT6687 sensor driver by [Fred78290](https://github.com/Fred78290/nct6687d). Install or uninstall the driver, and optionally blacklist the in-kernel `nct6683` driver. NCT6687 provides fan control support that is unavailable with the stock driver.
+11. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
+12. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
+13. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
+14. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
 
 ## Usage
 
@@ -53,6 +54,7 @@ curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-t
   [ 5]  ZRAM -> ZSWAP       Disable ZRAM, enable ZSWAP w/ lz4
   [ 6]  Hide RDSEED Warning Set loglevel=0 in /boot/limine.conf
   [ 7]  Disable Mitigations Add mitigations=off to limine.conf
+  [ 8]  Overcommit/Memlock  vm.overcommit_memory=1 & unlimited memlock
 
   Revert / Undo
   ──────────────────────────────────────────────────────────────
