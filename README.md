@@ -22,8 +22,9 @@ Please use with caution.
 10. **NCT Menu** – Manage the NCT6687 sensor driver by [Fred78290](https://github.com/Fred78290/nct6687d). Install or uninstall the driver, and optionally blacklist the in-kernel `nct6683` driver. NCT6687 provides fan control support that is unavailable with the stock driver.
 11. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
 12. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
-13. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
-14. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
+13. **Power & Sleep** – Manage Deck Mode (`steam-deckify.conf` power button + Steam's `config.vdf` sleep timer) and Desktop Mode (KDE Powerdevil power button + screen-off timer) directly. Includes one-shot "Shutdown (Both)" and "Disable Sleep/Screen (Both)" bulk actions, individual per-mode toggles, and a full revert to OEM defaults.
+14. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
+15. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
 
 ## Usage
 
@@ -66,6 +67,7 @@ curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-t
   [ N]  NCT Menu            NCT6687 sensor driver management
   [ D]  DP Audio Fix        Fix DisplayPort audio delay via WirePlumber
   [ W]  Realtek WiFi USB    RTL88x2BU driver — install, upgrade, uninstall
+  [ L]  Power & Sleep       Deck + Desktop: shutdown power button, disable sleep/screen
 
   System
   ──────────────────────────────────────────────────────────────
