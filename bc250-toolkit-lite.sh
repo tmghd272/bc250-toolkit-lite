@@ -724,6 +724,272 @@ run_nct_menu() {
     done
 }
 
+_i2c_state_dir="/etc/bc250-toolkit"
+_i2c_state_file="${_i2c_state_dir}/isl69247-bus"
+_i2c_service_file="/etc/systemd/system/bc250-isl69247.service"
+_i2c_modules_file="/etc/modules-load.d/isl68137.conf"
+_i2c_chip="isl69247"
+_i2c_addr="0x60"
+
+# Single lightweight read on one known bus/address — safe to call often.
+# Only meaningful BEFORE the device is bound: once a driver owns the address
+# (i2cdetect shows "UU"), the kernel refuses raw i2c-dev access to it, so
+# this will always fail post-bind even though that's the healthy state.
+_i2c_probe_one() {
+    local bus="$1"
+    sudo -n true 2>/dev/null # no-op, keeps style consistent with rest of script
+    i2cget -y "$bus" "$_i2c_addr" 0x78 b &>/dev/null
+}
+
+# The correct "is this bus okay" check for any point after install: if a
+# driver is already bound (hwmon dir exists), that alone proves it's
+# healthy — don't raw-probe an address the kernel already owns exclusively,
+# since that probe would fail (resource busy) regardless of health.
+# Only fall back to the raw probe when nothing is bound yet.
+_i2c_bus_healthy() {
+    local bus="$1"
+    [[ -z "$bus" ]] && return 1
+    if [[ -e "/sys/bus/i2c/devices/${bus}-0060/hwmon" ]]; then
+        return 0
+    fi
+    _i2c_probe_one "$bus"
+}
+
+# Full multi-bus scan — only ever called ONCE per install, never looped or
+# repeated. Repeated i2cdetect scans (or repeated new_device/delete_device
+# cycles) were observed to wedge this bus until a reboot; a single pass is
+# safe, but this must never be called speculatively or in a retry loop.
+_i2c_detect_bus() {
+    local found=""
+    for b in $(i2cdetect -l | awk '{print $1}' | sed 's/i2c-//'); do
+        local out; out=$(i2cdetect -y "$b" 2>/dev/null | string collect 2>/dev/null || i2cdetect -y "$b" 2>/dev/null)
+        local count; count=$(echo "$out" | grep -oE ' [0-9a-f]{2} ?' | wc -l)
+        local has60; has60=$(echo "$out" | awk '/^60:/{print $2}')
+        if [[ "$has60" == "60" ]] && [[ "$count" -le 15 ]]; then
+            found="$b"
+            break
+        fi
+    done
+    echo "$found"
+}
+
+_i2c_get_bus() {
+    if [[ -f "$_i2c_state_file" ]]; then
+        cat "$_i2c_state_file"
+    fi
+}
+
+_i2c_read_vin_hwmon() {
+    local bus="$1"
+    local hwmon_dir
+    hwmon_dir=$(ls -d "/sys/bus/i2c/devices/${bus}-0060/hwmon/hwmon"* 2>/dev/null | head -1)
+    [[ -z "$hwmon_dir" ]] && return 1
+
+    for label_file in "$hwmon_dir"/in*_label; do
+        [[ -f "$label_file" ]] || continue
+        if [[ "$(cat "$label_file" 2>/dev/null)" == "vin" ]]; then
+            local input_file="${label_file/_label/_input}"
+            if [[ -f "$input_file" ]]; then
+                local raw; raw=$(cat "$input_file" 2>/dev/null)
+                if [[ -n "$raw" ]] && [[ "$raw" =~ ^[0-9]+$ ]]; then
+                    awk -v r="$raw" 'BEGIN{printf "%.2f V", r/1000}'
+                    return 0
+                fi
+            fi
+        fi
+    done
+    return 1
+}
+
+_i2c_status() {
+    local bus="$1"
+    local mod_loaded=0
+    lsmod | awk '$1=="isl68137" {found=1} END{exit !found}' && mod_loaded=1
+
+    echo -e "  ${BOLD}${YELLOW}Status${RESET}"
+    echo -e "  ${DIM}──────────────────────────────────────────────────────────────${RESET}"
+    if [[ $mod_loaded -eq 1 ]]; then
+        echo -e "  isl68137 module:   ${GREEN}loaded${RESET}"
+    else
+        echo -e "  isl68137 module:   ${DIM}not loaded${RESET}"
+    fi
+
+    if [[ -n "$bus" ]]; then
+        echo -e "  Detected bus:      ${WHITE}i2c-${bus}${RESET} (address ${WHITE}${_i2c_addr}${RESET})"
+        if [[ -e "/sys/bus/i2c/devices/${bus}-0060/hwmon" ]]; then
+            echo -e "  Device bound:      ${GREEN}yes${RESET} (${_i2c_chip})"
+            local vin vin_src=""
+            vin=$(sensors 2>/dev/null | awk '/^isl69247/{f=1} f&&/^vin:/{print $2, $3; exit}')
+            if [[ -n "$vin" ]] && [[ "$vin" != "N/A" ]]; then
+                vin_src="lm-sensors"
+            else
+                vin=$(_i2c_read_vin_hwmon "$bus")
+                [[ -n "$vin" ]] && vin_src="hwmon fallback"
+            fi
+            if [[ -n "$vin" ]]; then
+                echo -e "  Live VIN reading:  ${WHITE}${vin}${RESET} ${DIM}(via ${vin_src})${RESET}"
+            else
+                echo -e "  Live VIN reading:  ${YELLOW}N/A — bus not responding right now${RESET}"
+                echo -e "                     ${DIM}(bound OK, but reads fail after heavy bus use — try a reboot)${RESET}"
+            fi
+        else
+            echo -e "  Device bound:      ${DIM}no${RESET}"
+        fi
+    else
+        echo -e "  Detected bus:      ${DIM}not detected${RESET} (probe failed — check wiring, or run Re-detect Bus)"
+    fi
+
+    if [[ -f "$_i2c_service_file" ]]; then
+        local svc_state; svc_state=$(systemctl is-enabled bc250-isl69247.service 2>/dev/null)
+        echo -e "  Boot persistence:  ${GREEN}installed${RESET} (${svc_state:-unknown})"
+    else
+        echo -e "  Boot persistence:  ${DIM}not installed${RESET}"
+    fi
+    echo ""
+}
+
+run_i2c_menu() {
+    # One lightweight probe per menu session, not per redraw — repeated
+    # probing is what wedges this bus. If the cached bus is missing or
+    # stale, try it once, then fall back to the documented common default
+    # (bus 4) with a single probe before giving up and asking for a real
+    # detect. Self-heals the cache file on success so next time is instant.
+    local session_bus; session_bus=$(_i2c_get_bus)
+    if [[ -z "$session_bus" ]] || ! _i2c_bus_healthy "$session_bus"; then
+        if [[ "$session_bus" != "4" ]] && _i2c_bus_healthy 4; then
+            session_bus=4
+        else
+            session_bus=""
+        fi
+    fi
+    if [[ -n "$session_bus" ]]; then
+        mkdir -p "$_i2c_state_dir"
+        echo "$session_bus" > "$_i2c_state_file"
+    fi
+
+    while true; do
+        print_banner
+        print_section "I2C / isl69247 PMIC Sensor Menu"
+        echo -e "  ${DIM}Requires the TPMS1<->I2C_HEADER1 hardware bridge — see BC250-Telemetry's${RESET}"
+        echo -e "  ${DIM}hardware.md before installing. Detection runs at most once per install${RESET}"
+        echo -e "  ${DIM}to avoid wedging the bus; if it stops responding, just reboot.${RESET}\n"
+        _i2c_status "$session_bus"
+        print_item "1" "Install"           "Load driver, detect bus, bind device, persist at boot"
+        print_item "2" "Uninstall"         "Unbind device, remove driver + boot persistence"
+        print_item "3" "Re-detect Bus"     "Only if the bus number has changed (rare)"
+        echo ""
+        print_item "0" "Back"              "Return to main menu"
+        echo ""
+        echo -e "  ${BOLD}${CYAN}══════════════════════════════════════════════════════════════${RESET}"
+        read -rp "$(echo -e "  ${BOLD}${WHITE}Enter selection:${RESET} ")" opt
+
+        case "$opt" in
+            1)
+                print_step "I2C-1" "Installing isl69247 PMIC sensor support"
+
+                if lsmod | awk '$1=="isl68137" {found=1} END{exit !found}'; then
+                    print_info "isl68137 module already loaded — skipping modprobe."
+                else
+                    print_info "Loading isl68137 module (built into the kernel — no DKMS needed)..."
+                    modprobe isl68137 || { print_error "modprobe failed."; press_enter; continue; }
+                fi
+                mkdir -p "$_i2c_state_dir"
+                echo "isl68137" | tee "$_i2c_modules_file" >/dev/null
+
+                local bus; bus=$(_i2c_get_bus)
+                if [[ -n "$bus" ]] && _i2c_bus_healthy "$bus"; then
+                    print_info "Using cached bus i2c-${bus} (still responding)."
+                else
+                    print_info "Detecting PMIC bus (single pass)..."
+                    bus=$(_i2c_detect_bus)
+                    if [[ -z "$bus" ]]; then
+                        print_error "No device found at ${_i2c_addr} on any bus."
+                        print_error "Check the TPMS1<->I2C_HEADER1 wiring bridge (see hardware.md)."
+                        print_error "If it was working before, try a reboot first — this bus wedges"
+                        print_error "under repeated scanning and only clears on reboot."
+                        press_enter; continue
+                    fi
+                    echo "$bus" > "$_i2c_state_file"
+                    print_success "Found PMIC at i2c-${bus}, ${_i2c_addr}."
+                fi
+
+                if [[ -e "/sys/bus/i2c/devices/${bus}-0060/hwmon" ]]; then
+                    print_info "Device already bound — skipping."
+                else
+                    print_info "Binding ${_i2c_chip} at ${_i2c_addr} on i2c-${bus}..."
+                    echo "${_i2c_chip} ${_i2c_addr}" | tee "/sys/bus/i2c/devices/i2c-${bus}/new_device" >/dev/null
+                    sleep 1
+                    if [[ ! -e "/sys/bus/i2c/devices/${bus}-0060/hwmon" ]]; then
+                        print_error "Bind failed — no hwmon directory created. Check dmesg."
+                        press_enter; continue
+                    fi
+                fi
+
+                print_info "Installing boot-persistence service (sysfs binding doesn't survive reboot)..."
+                cat > "$_i2c_service_file" << EOF
+[Unit]
+Description=Bind isl69247 PMIC sensor on i2c-${bus}
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'modprobe isl68137; [ -e /sys/bus/i2c/devices/${bus}-0060/hwmon ] || echo ${_i2c_chip} ${_i2c_addr} > /sys/bus/i2c/devices/i2c-${bus}/new_device'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+                systemctl daemon-reload
+                systemctl enable bc250-isl69247.service &>/dev/null
+                print_success "Installed. ${_i2c_chip} will bind automatically on every boot."
+                session_bus="$bus"
+                press_enter
+                ;;
+            2)
+                print_step "I2C-2" "Uninstalling isl69247 PMIC sensor support"
+                local bus; bus=$(_i2c_get_bus)
+
+                if [[ -n "$bus" ]] && [[ -e "/sys/bus/i2c/devices/${bus}-0060" ]]; then
+                    print_info "Unbinding device..."
+                    echo "$_i2c_addr" | tee "/sys/bus/i2c/devices/i2c-${bus}/delete_device" >/dev/null 2>&1 || true
+                fi
+
+                if [[ -f "$_i2c_service_file" ]]; then
+                    print_info "Removing boot-persistence service..."
+                    systemctl disable --now bc250-isl69247.service &>/dev/null
+                    rm -f "$_i2c_service_file"
+                    systemctl daemon-reload
+                fi
+
+                rm -f "$_i2c_modules_file" "$_i2c_state_file"
+                modprobe -r isl68137 2>/dev/null || true
+                print_success "isl69247 sensor support removed."
+                session_bus=""
+                press_enter
+                ;;
+            3)
+                print_step "I2C-3" "Re-detecting PMIC bus"
+                print_info "Running a single-pass scan (this is safe once, but avoid repeating it)..."
+                local bus; bus=$(_i2c_detect_bus)
+                if [[ -z "$bus" ]]; then
+                    print_error "No device found at ${_i2c_addr} on any bus."
+                else
+                    mkdir -p "$_i2c_state_dir"
+                    echo "$bus" > "$_i2c_state_file"
+                    print_success "Found PMIC at i2c-${bus}. Re-run Install to bind/persist it."
+                    session_bus="$bus"
+                fi
+                press_enter
+                ;;
+            0) return ;;
+            *)
+                print_error "Invalid selection: '$opt'"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 run_audio_fix() {
     print_step "AT-3" "Fix DisplayPort Audio Delay"
 
@@ -1613,6 +1879,7 @@ show_menu() {
     print_section "Additional Tools"
     print_item  "B"  "Toggle Boot Mode"    "Switch between Game Mode & Desktop"
     print_item  "N"  "NCT Menu"            "NCT6687 sensor driver management"
+    print_item  "I"  "I2C Menu"            "isl69247 sensor driver management"
     print_item  "D"  "DP Audio Fix"        "Fix DisplayPort audio delay via WirePlumber"
     print_item  "W"  "Realtek WiFi USB"    "RTL88x2BU driver — install, upgrade, uninstall"
     print_item  "L"  "Power & Sleep"       "Deck + Desktop: shutdown power button, disable sleep/screen"
@@ -1641,6 +1908,7 @@ while true; do
         R) run_revert_menu ;;
         B) run_toggle_boot_mode;          press_enter ;;
         N) run_nct_menu ;;
+        I) run_i2c_menu ;;
         D) run_audio_fix;                 press_enter ;;
         W) run_realtek_wifi_menu ;;
         L) run_power_sleep_menu ;;
