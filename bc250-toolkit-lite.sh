@@ -773,6 +773,295 @@ EOF
             || print_error "Failed to restart WirePlumber — you may need to log out and back in."
 }
 
+_run_as_user() {
+    sudo -u "$REAL_USER" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "$REAL_USER")/bus" \
+        XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" \
+        "$@"
+}
+
+# ==============================================================================
+# POWER & SLEEP — DECK MODE (steam-deckify.conf + Steam's config.vdf)
+# ==============================================================================
+
+_deck_config_vdf() {
+    echo "/home/$REAL_USER/.local/share/Steam/config/config.vdf"
+}
+
+_deck_powerkey_current() {
+    grep -oP '^HandlePowerKey=\K.*' /etc/systemd/logind.conf.d/steam-deckify.conf 2>/dev/null
+}
+
+_deck_sleep_current() {
+    grep -oP '"IdleSuspendACSeconds"\s*"\K[0-9]+' "$(_deck_config_vdf)" 2>/dev/null
+}
+
+deck_powerkey_set() {
+    local val="$1" label="$2"
+    local f="/etc/systemd/logind.conf.d/steam-deckify.conf"
+
+    if [[ ! -f "$f" ]]; then
+        print_error "steam-deckify.conf not found — is cachyos-handheld installed?"
+        return 1
+    fi
+
+    if [[ "$(_deck_powerkey_current)" == "$val" ]]; then
+        print_info "Power button already set to '${label}' — skipping."
+        return 0
+    fi
+
+    sed -i "s/^HandlePowerKey=.*/HandlePowerKey=${val}/" "$f"
+    print_info "Reloading systemd-logind (SIGHUP — avoids the full-restart DRM/HDMI"
+    print_info "glitch a 'systemctl restart' can cause mid-session)..."
+    systemctl kill -s HUP systemd-logind
+    sleep 1
+
+    local current
+    current=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+        org.freedesktop.login1.Manager HandlePowerKey 2>/dev/null | awk '{print $2}' | tr -d '"')
+
+    if [[ "$current" == "$val" ]]; then
+        print_success "Power button set to '${label}'."
+    else
+        print_error "Runtime value is still '${current:-unknown}' — reload may not have applied cleanly."
+    fi
+}
+
+deck_sleep_set() {
+    local seconds="$1" label="$2"
+    local f; f=$(_deck_config_vdf)
+
+    if [[ ! -f "$f" ]]; then
+        print_error "Steam config.vdf not found at $f — has Steam been run at least once?"
+        return 1
+    fi
+
+    if [[ "$(_deck_sleep_current)" == "$seconds" ]]; then
+        print_info "Sleep timer already set to ${label} — skipping."
+        return 0
+    fi
+
+    print_info "Stopping Steam (needed so it doesn't overwrite this on exit)..."
+    _run_as_user systemctl --user stop steam-launcher.service 2>/dev/null
+    sleep 1
+    sed -i "s/\"IdleSuspendACSeconds\"[[:space:]]*\"[0-9]*\"/\"IdleSuspendACSeconds\"\t\t\t\"${seconds}\"/" "$f"
+    print_info "Restarting Steam..."
+    _run_as_user systemctl --user start steam-launcher.service
+    print_success "Sleep timer set to ${label}."
+}
+
+run_deck_powerkey_enable()  { print_step "PS-1" "Deck Mode: Power Button -> Shutdown";      deck_powerkey_set poweroff "Shutdown"; }
+run_deck_powerkey_revert()  { print_step "PS-2" "Deck Mode: Power Button -> OEM Default";    deck_powerkey_set ignore   "Ignore (OEM default)"; }
+run_deck_sleep_disable()    { print_step "PS-3" "Deck Mode: Sleep Timer -> Disabled";        deck_sleep_set 0    "Disabled"; }
+run_deck_sleep_revert()     { print_step "PS-4" "Deck Mode: Sleep Timer -> Default (1 hour)"; deck_sleep_set 3600 "1 hour (default)"; }
+
+# ==============================================================================
+# POWER & SLEEP — DESKTOP MODE (KDE Powerdevil via kwriteconfig6/kreadconfig6)
+# ==============================================================================
+
+_desktop_rc() {
+    echo "/home/$REAL_USER/.config/powerdevilrc"
+}
+
+_desktop_read() {
+    local group1="$1" group2="$2" key="$3"
+    _run_as_user kreadconfig6 --file "$(_desktop_rc)" --group "$group1" --group "$group2" --key "$key" 2>/dev/null
+}
+
+_desktop_write() {
+    local group1="$1" group2="$2" key="$3" val="$4"
+    # '--' terminates option parsing so a value like '-1' isn't mistaken for a flag
+    _run_as_user kwriteconfig6 --file "$(_desktop_rc)" --group "$group1" --group "$group2" --key "$key" -- "$val"
+}
+
+desktop_powerbutton_set() {
+    local val="$1" label="$2"
+    if ! command -v kwriteconfig6 &>/dev/null; then
+        print_error "kwriteconfig6 not found — is this a Plasma 6 session?"
+        return 1
+    fi
+    if [[ "$(_desktop_read AC SuspendAndShutdown PowerButtonAction)" == "$val" ]]; then
+        print_info "Power button already set to '${label}' — skipping."
+        return 0
+    fi
+    _desktop_write AC SuspendAndShutdown PowerButtonAction "$val"
+    print_success "Power button set to '${label}'. (Powerdevil applies this live — no restart needed.)"
+}
+
+desktop_screenoff_set() {
+    local seconds="$1" label="$2"
+    if ! command -v kwriteconfig6 &>/dev/null; then
+        print_error "kwriteconfig6 not found — is this a Plasma 6 session?"
+        return 1
+    fi
+    local cur_secs; cur_secs=$(_desktop_read AC Display TurnOffDisplayIdleTimeoutSec)
+    # Plasma 6 omits this key entirely when it matches the true default (10 min/600s)
+    if [[ "$cur_secs" == "$seconds" ]] || { [[ -z "$cur_secs" ]] && [[ "$seconds" == "600" ]]; }; then
+        print_info "Screen timeout already set to '${label}' — skipping."
+        return 0
+    fi
+    _desktop_write AC Display TurnOffDisplayIdleTimeoutSec "$seconds"
+    if [[ "$seconds" == "-1" ]]; then
+        # Real Powerdevil writes this explicitly false only when disabled.
+        _desktop_write AC Display TurnOffDisplayWhenIdle "false"
+    else
+        # Real Powerdevil omits this key entirely when a timer is active —
+        # delete it rather than setting it true, or a stale 'false' from a
+        # prior disable will silently override the timeout.
+        _run_as_user kwriteconfig6 --file "$(_desktop_rc)" --group AC --group Display \
+            --key TurnOffDisplayWhenIdle --delete 2>/dev/null
+    fi
+    print_success "Screen timeout set to '${label}'. (Powerdevil applies this live — no restart needed.)"
+}
+
+run_desktop_powerbutton_shutdown() { print_step "PS-5" "Desktop Mode: Power Button -> Shut Down"; desktop_powerbutton_set 8 "Shut Down"; }
+run_desktop_powerbutton_revert()   { print_step "PS-6" "Desktop Mode: Power Button -> OEM Default (Sleep)"; desktop_powerbutton_set 1 "Sleep (OEM default)"; }
+run_desktop_screenoff_disable()    { print_step "PS-7" "Desktop Mode: Turn Off Screen -> Disabled"; desktop_screenoff_set -1 "Disabled"; }
+run_desktop_screenoff_revert()     { print_step "PS-8" "Desktop Mode: Turn Off Screen -> OEM Default (10 min)"; desktop_screenoff_set 600 "10 minutes (OEM default)"; }
+
+# ==============================================================================
+# POWER & SLEEP — REVERT ALL
+# ==============================================================================
+
+run_power_sleep_shutdown_all() {
+    print_step "PS-0c" "Enable Power Button Shutdown — Deck + Desktop"
+    if ! confirm "Set BOTH Deck Mode and Desktop Mode power buttons to trigger a real shutdown?"; then
+        print_info "Cancelled."
+        return 0
+    fi
+    deck_powerkey_set        poweroff "Shutdown"
+    desktop_powerbutton_set  8        "Shut Down"
+    print_success "Power button now shuts down in both Deck Mode and Desktop Mode."
+}
+
+run_power_sleep_disable_all() {
+    print_step "PS-0a" "Sleep/Screen: Disable (Both) — BC-250 has no working S3 support"
+    if ! confirm "Set Deck Mode sleep timer and Desktop Mode screen-off timer both to Off?"; then
+        print_info "Cancelled."
+        return 0
+    fi
+    deck_sleep_set         0 "Disabled"
+    desktop_screenoff_set -1 "Disabled"
+    print_success "Deck sleep timer and Desktop screen-off timer both disabled."
+}
+
+run_power_sleep_revert_all() {
+    print_step "PS-0b" "Revert ALL Power & Sleep settings to OEM defaults"
+    if ! confirm "Reset Deck Mode power button (ignore), Deck Mode sleep timer (1hr), Desktop power button (Sleep), and Desktop screen-off (10 min) — all back to their original out-of-box values?"; then
+        print_info "Cancelled."
+        return 0
+    fi
+    deck_powerkey_set        ignore "Ignore (OEM default)"
+    deck_sleep_set            3600  "1 hour (default)"
+    desktop_powerbutton_set   1     "Sleep (OEM default)"
+    desktop_screenoff_set     600   "10 minutes (OEM default)"
+    print_success "All Power & Sleep settings reverted to OEM defaults."
+}
+
+# ==============================================================================
+# POWER & SLEEP — SUBMENU
+# ==============================================================================
+
+_power_sleep_status() {
+    local dk_pw dk_sl dt_pw dt_so_sec
+
+    dk_pw=$(_deck_powerkey_current)
+    dk_sl=$(_deck_sleep_current)
+    if command -v kreadconfig6 &>/dev/null; then
+        dt_pw=$(_desktop_read AC SuspendAndShutdown PowerButtonAction)
+        dt_so_sec=$(_desktop_read AC Display TurnOffDisplayIdleTimeoutSec)
+    fi
+
+    local action_label
+    action_label() {
+        case "$1" in
+            0) echo "Do Nothing" ;;
+            1) echo "Sleep" ;;
+            2) echo "Hibernate" ;;
+            8) echo "Shut Down" ;;
+            "") echo "Do Nothing (default)" ;;
+            *) echo "Unknown ($1)" ;;
+        esac
+    }
+
+    echo -e "  ${BOLD}${YELLOW}Current Status${RESET}"
+    echo -e "  ${DIM}──────────────────────────────────────────────────────────────${RESET}"
+    echo -e "  ${CYAN}Deck Mode${RESET}"
+    echo -e "    Power Button:      ${WHITE}${dk_pw:-unknown}${RESET}"
+    if [[ "$dk_sl" == "0" ]]; then
+        echo -e "    Sleep Timer:       ${WHITE}Disabled${RESET}"
+    elif [[ -n "$dk_sl" ]]; then
+        echo -e "    Sleep Timer:       ${WHITE}${dk_sl}s ($(( dk_sl / 60 )) min)${RESET}"
+    else
+        echo -e "    Sleep Timer:       ${DIM}unknown (config.vdf not found?)${RESET}"
+    fi
+    echo -e "  ${CYAN}Desktop Mode${RESET}"
+    echo -e "    Power Button:      ${WHITE}$(action_label "$dt_pw")${RESET}"
+    if [[ "$dt_so_sec" == "-1" ]]; then
+        echo -e "    Turn Off Screen:   ${WHITE}Disabled${RESET}"
+    elif [[ -z "$dt_so_sec" ]]; then
+        echo -e "    Turn Off Screen:   ${WHITE}10 min (default)${RESET}"
+    else
+        echo -e "    Turn Off Screen:   ${WHITE}${dt_so_sec}s ($(( dt_so_sec / 60 )) min)${RESET}"
+    fi
+    echo ""
+}
+
+show_power_sleep_menu() {
+    print_banner
+    print_section "Power & Sleep"
+    echo -e "  ${DIM}Deck Mode (steam-deckify.conf + Steam config.vdf) and Desktop Mode${RESET}"
+    echo -e "  ${DIM}(KDE Powerdevil) power button and screen-off behavior.${RESET}\n"
+
+    _power_sleep_status
+
+    echo -e "  ${BOLD}${YELLOW}Deck Mode${RESET}"
+    echo -e "  ${DIM}──────────────────────────────────────────────────────────────${RESET}"
+    print_item "1" "Power Button: Shutdown" "HandlePowerKey=poweroff"
+    print_item "2" "Power Button: Revert"   "Back to OEM default (ignore)"
+    print_item "3" "Sleep: Disable"         "IdleSuspendACSeconds=0"
+    print_item "4" "Sleep: Revert"          "Back to OEM default (1 hour)"
+    echo ""
+    echo -e "  ${BOLD}${YELLOW}Desktop Mode${RESET}"
+    echo -e "  ${DIM}──────────────────────────────────────────────────────────────${RESET}"
+    print_item "5" "Power Button: Shutdown" "PowerButtonAction=8"
+    print_item "6" "Power Button: Revert"   "Back to OEM default (Sleep)"
+    print_item "7" "Screen Off: Disable"    "Never turn off display when idle"
+    print_item "8" "Screen Off: Revert"     "Back to OEM default (10 min)"
+    echo ""
+    print_item "P" "Power Button: Shutdown (Both)" "Set Deck & Desktop power buttons to Shut Down"
+    print_item "D" "Sleep/Screen: Disable (Both)"  "Set Deck & Desktop sleep/screen timers to Off"
+    print_item "A" "Revert ALL"                    "Reset every setting above to OEM defaults"
+    print_item "0" "Back"                            "Return to main menu"
+    echo ""
+    echo -e "  ${BOLD}${CYAN}══════════════════════════════════════════════════════════════${RESET}"
+}
+
+run_power_sleep_menu() {
+    while true; do
+        show_power_sleep_menu
+        read -rp "$(echo -e "  ${BOLD}${WHITE}Enter selection:${RESET} ")" ps_choice
+        case "${ps_choice^^}" in
+            1) run_deck_powerkey_enable;         press_enter ;;
+            2) run_deck_powerkey_revert;          press_enter ;;
+            3) run_deck_sleep_disable;            press_enter ;;
+            4) run_deck_sleep_revert;              press_enter ;;
+            5) run_desktop_powerbutton_shutdown;   press_enter ;;
+            6) run_desktop_powerbutton_revert;     press_enter ;;
+            7) run_desktop_screenoff_disable;      press_enter ;;
+            8) run_desktop_screenoff_revert;       press_enter ;;
+            P) run_power_sleep_shutdown_all;      press_enter ;;
+            D) run_power_sleep_disable_all;        press_enter ;;
+            A) run_power_sleep_revert_all;         press_enter ;;
+            0) return ;;
+            *)
+                print_error "Invalid selection: '$ps_choice'"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 _rtw_status() {
     if lsmod | awk '$1=="rtw88_8822bu" {found=1} END{exit !found}'; then
         local old_color="$MAGENTA"; local old_label="loaded (in-kernel driver, should be replaced)"
@@ -1326,6 +1615,7 @@ show_menu() {
     print_item  "N"  "NCT Menu"            "NCT6687 sensor driver management"
     print_item  "D"  "DP Audio Fix"        "Fix DisplayPort audio delay via WirePlumber"
     print_item  "W"  "Realtek WiFi USB"    "RTL88x2BU driver — install, upgrade, uninstall"
+    print_item  "L"  "Power & Sleep"       "Deck + Desktop: shutdown power button, disable sleep/screen"
     echo ""
     print_section "System"
     print_item  "S"  "Status"              "Current system summary"
@@ -1353,6 +1643,7 @@ while true; do
         N) run_nct_menu ;;
         D) run_audio_fix;                 press_enter ;;
         W) run_realtek_wifi_menu ;;
+        L) run_power_sleep_menu ;;
         S) run_status;                    press_enter ;;
         M) run_module_checker ;;
         0)
