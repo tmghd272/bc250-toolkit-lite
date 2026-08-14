@@ -23,8 +23,9 @@ Please use with caution.
 11. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
 12. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
 13. **Power & Sleep** – Manage Deck Mode (`steam-deckify.conf` power button + Steam's `config.vdf` sleep timer) and Desktop Mode (KDE Powerdevil power button + screen-off timer) directly. Includes one-shot "Shutdown (Both)" and "Disable Sleep/Screen (Both)" bulk actions, individual per-mode toggles, and a full revert to OEM defaults.
-14. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
-15. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
+14. **I2C Menu** – Loads the in-kernel `isl68137` driver and binds the `isl69247` PMIC sensor over I2C/PMBus (requires the [TPMS1<->I2C_HEADER1 hardware bridge](https://github.com/onlinermm/BC250-Telemetry/blob/main/hardware.md)). Install auto-detects the correct bus (varies by board), binds the device, and persists it at boot via a systemd service — readings then show up in `sensors` like any other sensor. No web dashboard or daemon, just the driver.
+15. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
+16. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
 
 ## Usage
 
@@ -65,6 +66,7 @@ curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-t
   ──────────────────────────────────────────────────────────────
   [ B]  Toggle Boot Mode    Switch between Game Mode & Desktop
   [ N]  NCT Menu            NCT6687 sensor driver management
+  [ I]  I2C Menu            isl69247 sensor driver management
   [ D]  DP Audio Fix        Fix DisplayPort audio delay via WirePlumber
   [ W]  Realtek WiFi USB    RTL88x2BU driver — install, upgrade, uninstall
   [ L]  Power & Sleep       Deck + Desktop: shutdown power button, disable sleep/screen
