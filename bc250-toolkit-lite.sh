@@ -724,7 +724,7 @@ run_nct_menu() {
     done
 }
 
-_i2c_state_dir="/etc/bc250-toolkit"
+_i2c_state_dir="/tmp/bc250-i2c"
 _i2c_state_file="${_i2c_state_dir}/isl69247-bus"
 _i2c_service_file="/etc/systemd/system/bc250-isl69247.service"
 _i2c_modules_file="/etc/modules-load.d/isl68137.conf"
