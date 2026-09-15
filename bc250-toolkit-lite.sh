@@ -96,53 +96,183 @@ confirm() {
 # SETUP TASKS — GOVERNORS
 # ==============================================================================
 
-run_cpu_governor() {
-    print_step "01" "Installing CPU Governor"
+BC250_SMU_OC_REPO_DIR="/root/bc250_smu_oc"
+BC250_SMU_OC_BIN_DIR="/root/.local/bin"
 
-    if systemctl is-enabled bc250-smu-oc.service &>/dev/null || \
-       pipx list 2>/dev/null | grep -q 'bc250-smu-oc'; then
-        print_info "CPU governor already installed — skipping."
+# Community fix from unmerged PR #3 (bc250-collective/bc250_smu_oc):
+# stress_helper.py hardcodes `stress --cpu 12`, so bc250-detect's internal
+# stability stress test never loads the extra 2 cores / 4 threads on an
+# 8c/16t-unlocked BC-250 — an overclock can validate "stable" while those
+# threads were never under load. This scales it to all available threads.
+patch_bc250_smu_oc_stress_helper() {
+    local f="$BC250_SMU_OC_REPO_DIR/stress_helper.py"
+
+    if [[ ! -f "$f" ]]; then
+        print_error "stress_helper.py not found in $BC250_SMU_OC_REPO_DIR — skipping 16-thread patch."
+        return 1
+    fi
+
+    if grep -q '_cpu_workers' "$f"; then
+        print_info "16-thread stress patch already applied."
         return 0
     fi
 
-    print_info "Installing dependencies: python-pipx, stress"
-    pacman -Syu python-pipx stress --noconfirm || { print_error "Failed to install dependencies."; return 1; }
-    print_info "Cloning bc250_smu_oc repository..."
-    if [[ -d "bc250_smu_oc" ]]; then
-        print_info "Directory already exists — pulling latest changes..."
-        git -C bc250_smu_oc pull || { print_error "Failed to pull repository."; return 1; }
-    else
-        git clone https://github.com/bc250-collective/bc250_smu_oc.git || { print_error "Failed to clone repository."; return 1; }
+    if ! grep -q '"stress", "--cpu", "12"' "$f"; then
+        print_error "stress_helper.py doesn't match the known unpatched form — upstream may have changed it. Skipping automatic patch; check PR #3 manually."
+        return 1
     fi
-    cd bc250_smu_oc
+
+    print_info "Applying unmerged fix (PR #3): scale bc250-detect's internal stress test to all CPU threads instead of hardcoded 12..."
+    python3 - "$f" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as fh:
+    src = fh.read()
+
+src = src.replace(
+    "import subprocess\nimport atexit\n",
+    "import os\nimport subprocess\nimport atexit\n",
+    1,
+)
+
+helper = (
+    "\ndef _cpu_workers():\n"
+    "    try:\n"
+    "        n = len(os.sched_getaffinity(0))\n"
+    "    except (AttributeError, OSError):\n"
+    "        n = os.cpu_count()\n"
+    "    return n if n and n > 0 else 1\n"
+)
+src = src.replace("\ndef stress_start():", helper + "\ndef stress_start():", 1)
+
+src = src.replace(
+    '_process = subprocess.Popen(["stress", "--cpu", "12"]',
+    '_process = subprocess.Popen(["stress", "--cpu", str(_cpu_workers())]',
+)
+
+with open(path, "w") as fh:
+    fh.write(src)
+PYEOF
+
+    if grep -q '_cpu_workers' "$f"; then
+        print_success "Patched stress_helper.py — internal stress test now scales to all available threads."
+    else
+        print_error "Patch failed to apply cleanly — reverting to upstream file."
+        git -C "$BC250_SMU_OC_REPO_DIR" checkout -- stress_helper.py 2>/dev/null || true
+        return 1
+    fi
+}
+
+run_cpu_governor() {
+    print_step "01" "CPU Governor — bc250-smu-oc"
+
+    local pkg_installed=0
+    systemctl is-enabled bc250-smu-oc.service &>/dev/null && pkg_installed=1
+    pipx list 2>/dev/null | grep -q 'bc250-smu-oc' && pkg_installed=1
+
+    if [[ $pkg_installed -eq 1 ]]; then
+        if ! confirm "bc250-smu-oc already installed — reinstall from source?"; then
+            print_info "Skipped."
+            return 0
+        fi
+    fi
+
+    print_info "Installing dependencies: python-pipx, stress..."
+    pacman -Syu --needed python-pipx stress --noconfirm || { print_error "Failed to install dependencies."; return 1; }
+
+    print_info "Fetching bc250_smu_oc into ${BC250_SMU_OC_REPO_DIR}..."
+    if [[ -d "$BC250_SMU_OC_REPO_DIR/.git" ]]; then
+        git -C "$BC250_SMU_OC_REPO_DIR" checkout -- . 2>/dev/null || true
+        if ! git -C "$BC250_SMU_OC_REPO_DIR" pull; then
+            print_error "Pull failed — re-cloning fresh copy."
+            rm -rf "$BC250_SMU_OC_REPO_DIR"
+            git clone https://github.com/bc250-collective/bc250_smu_oc.git "$BC250_SMU_OC_REPO_DIR" || { print_error "Clone failed."; return 1; }
+        fi
+    else
+        rm -rf "$BC250_SMU_OC_REPO_DIR" 2>/dev/null || true
+        git clone https://github.com/bc250-collective/bc250_smu_oc.git "$BC250_SMU_OC_REPO_DIR" || { print_error "Clone failed."; return 1; }
+    fi
+
+    patch_bc250_smu_oc_stress_helper || print_info "Continuing install without the 16-thread patch."
+
     print_info "Installing via pipx..."
-    pipx install . || { print_error "Failed to install via pipx."; cd ..; return 1; }
+    ( cd "$BC250_SMU_OC_REPO_DIR" && pipx install . --force ) || { print_error "pipx install failed."; return 1; }
     pipx ensurepath || true
-    export PATH="$PATH:/root/.local/bin"
-    print_info "Running bc250-detect..."
-    bc250-detect --frequency 3500 --vid 1000 --keep || { print_error "bc250-detect failed."; cd ..; return 1; }
-    print_info "Applying overclock config..."
-    bc250-apply --install overclock.conf || { print_error "bc250-apply failed."; cd ..; return 1; }
-    print_info "Enabling systemd service..."
-    systemctl enable bc250-smu-oc || { print_error "Failed to enable service."; cd ..; return 1; }
-    cd ..
-    print_success "CPU Governor installed successfully!"
+    export PATH="$PATH:$BC250_SMU_OC_BIN_DIR"
+
+    if ! command -v bc250-detect &>/dev/null; then
+        print_error "bc250-detect not found on PATH ($BC250_SMU_OC_BIN_DIR) after install."
+        return 1
+    fi
+
+    print_info "Linking bc250-detect / bc250-apply into /usr/local/bin so they're callable from any shell..."
+    ln -sf "$BC250_SMU_OC_BIN_DIR/bc250-detect" /usr/local/bin/bc250-detect
+    ln -sf "$BC250_SMU_OC_BIN_DIR/bc250-apply" /usr/local/bin/bc250-apply
+    hash -r 2>/dev/null || true
+
+    if command -v bc250-apply &>/dev/null && [[ -e /usr/local/bin/bc250-detect ]]; then
+        print_success "bc250-detect and bc250-apply are now on PATH system-wide."
+    else
+        print_error "Symlinking into /usr/local/bin failed — check /usr/local/bin is writable."
+    fi
+
+    print_success "bc250-smu-oc installed."
+    print_info "Open a NEW terminal (or run 'hash -r') so your shell sees the new commands, then from any directory:"
+    echo -e "    ${DIM}sudo bc250-detect --frequency 3500 --vid 1000${RESET}"
+    echo -e "    ${DIM}sudo bc250-detect --frequency 3500 --vid 1000 -k${RESET}"
+    echo -e "    ${DIM}sudo bc250-apply --install overclock.conf${RESET}"
+    echo -e "    ${DIM}sudo systemctl enable --now bc250-smu-oc${RESET}"
+    print_info "Note: -k writes overclock.conf into whatever directory you ran it from — run bc250-apply from that same directory."
 }
 
 run_gpu_governor() {
-    print_step "02" "Installing GPU Governor"
+    print_step "02" "GPU Governor — cyan-skillfish-governor-smu"
 
-    if systemctl is-enabled cyan-skillfish-governor-smu.service &>/dev/null || \
-       pacman -Qq cyan-skillfish-governor-smu &>/dev/null; then
-        print_info "GPU governor already installed — skipping."
+    local pkg_installed=0 svc_active=0
+    pacman -Qq cyan-skillfish-governor-smu &>/dev/null && pkg_installed=1
+    systemctl is-active cyan-skillfish-governor-smu.service &>/dev/null && svc_active=1
+
+    if [[ $pkg_installed -eq 1 && $svc_active -eq 1 ]]; then
+        print_info "GPU governor already installed and running — skipping."
         return 0
     fi
 
+    if [[ $pkg_installed -eq 1 && $svc_active -eq 0 ]]; then
+        print_info "Package is installed but the service isn't active — (re)starting it."
+        systemctl enable --now cyan-skillfish-governor-smu.service
+        sleep 1
+        if systemctl is-active cyan-skillfish-governor-smu.service &>/dev/null; then
+            print_success "GPU governor service is now running."
+        else
+            print_error "Service still failed to start. Recent logs:"
+            journalctl -u cyan-skillfish-governor-smu.service -n 20 --no-pager
+            return 1
+        fi
+        return 0
+    fi
+
+    if ! command -v paru &>/dev/null; then
+        print_error "paru not found — install an AUR helper first, then re-run this."
+        return 1
+    fi
+
     print_info "Installing cyan-skillfish-governor-smu via paru (as $REAL_USER)..."
-    sudo -u "$REAL_USER" paru -S cyan-skillfish-governor-smu --noconfirm
+    if ! sudo -u "$REAL_USER" paru -S --needed cyan-skillfish-governor-smu --noconfirm; then
+        print_error "paru install failed."
+        return 1
+    fi
+
     print_info "Enabling and starting systemd service..."
     systemctl enable --now cyan-skillfish-governor-smu.service
-    print_success "GPU Governor installed and started successfully!"
+    sleep 1
+
+    if systemctl is-active cyan-skillfish-governor-smu.service &>/dev/null; then
+        print_success "GPU Governor installed and running successfully!"
+    else
+        print_error "Service enabled but failed to start. Recent logs:"
+        journalctl -u cyan-skillfish-governor-smu.service -n 20 --no-pager
+        return 1
+    fi
 }
 
 # ==============================================================================
@@ -349,9 +479,17 @@ run_revert_cpu_governor() {
     print_info "Uninstalling via pipx..."
     pipx uninstall bc250-smu-oc 2>/dev/null || true
 
+    print_info "Removing /usr/local/bin symlinks..."
+    rm -f /usr/local/bin/bc250-detect /usr/local/bin/bc250-apply
+
     if [[ -f "$CPU_DEST" ]]; then
         print_info "Removing config file $CPU_DEST..."
         rm -f "$CPU_DEST"
+    fi
+
+    if [[ -d "$BC250_SMU_OC_REPO_DIR" ]] && confirm "Also remove the cloned source at $BC250_SMU_OC_REPO_DIR?"; then
+        rm -rf "$BC250_SMU_OC_REPO_DIR"
+        print_info "Removed $BC250_SMU_OC_REPO_DIR."
     fi
 
     print_success "CPU governor removed successfully."
@@ -2108,7 +2246,7 @@ run_revert_menu() {
 show_menu() {
     print_banner
     print_section "Setup Tasks"
-    print_item  "1"  "CPU Governor"        "bc250-smu-oc CPU overclock service"
+    print_item  "1"  "CPU Governor"        "bc250-smu-oc install, linked to /usr/local/bin"
     print_item  "2"  "GPU Governor"        "cyan-skillfish GPU governor service"
     print_item  "3"  "CU Live Manager"     "Compute Units Live Manager by WinnieLV"
     echo ""
