@@ -636,7 +636,7 @@ _nct_status() {
 }
 
 run_nct_menu() {
-    local WORKDIR="/tmp/nct6687d"
+    local AUR_PKG="nct6687d-dkms-git"
     local MODULES_LOAD_FILE="/etc/modules-load.d/nct6687d.conf"
     local OPTIONS_FILE="/etc/modprobe.d/nct6687d.conf"
     local BLACKLIST_FILE="/etc/modprobe.d/nct6683.conf"
@@ -659,45 +659,34 @@ run_nct_menu() {
             1)
                 print_step "NCT-1" "Installing NCT6687 DKMS driver"
 
-                if [[ -d "/usr/src/nct6687d-1.0" ]] || dkms status 2>/dev/null | grep -q 'nct6687d'; then
+                if pacman -Qq "$AUR_PKG" &>/dev/null || dkms status 2>/dev/null | grep -q 'nct6687d'; then
                     print_info "NCT6687 driver already installed — skipping."
                     press_enter; continue
                 fi
 
-                rm -rf "$WORKDIR"
-                print_info "Installing dependencies..."
-                pacman -Sy --needed --noconfirm git base-devel dkms linux-headers \
+                print_info "Installing dependencies: base-devel, dkms, linux-headers..."
+                pacman -Sy --needed --noconfirm base-devel dkms linux-headers \
                     || { print_error "Failed to install dependencies."; press_enter; continue; }
-                print_info "Cloning nct6687d repository..."
-                git clone https://github.com/Fred78290/nct6687d "$WORKDIR" \
-                    || { print_error "Failed to clone repository."; press_enter; continue; }
-                cd "$WORKDIR"
-                print_info "Installing via DKMS..."
-                mkdir -p /usr/src/nct6687d-1.0
-                cp -r . /usr/src/nct6687d-1.0/
-                dkms add nct6687d/1.0 \
-                    && dkms build nct6687d/1.0 \
-                    && dkms install nct6687d/1.0 \
-                    || { print_error "DKMS build/install failed."; cd /; press_enter; continue; }
+                print_info "Installing ${AUR_PKG} via paru (as $REAL_USER)..."
+                sudo -u "$REAL_USER" paru -S "$AUR_PKG" --noconfirm \
+                    || { print_error "paru install failed."; press_enter; continue; }
                 echo "nct6687" | tee "$MODULES_LOAD_FILE" >/dev/null
                 echo "options nct6687 force=true" | tee "$OPTIONS_FILE" >/dev/null
                 modprobe nct6687 || print_error "Module load failed — try rebooting."
-                cd /
                 print_success "NCT6687 driver installed successfully!"
                 press_enter
                 ;;
             2)
                 print_step "NCT-2" "Uninstalling NCT6687 Driver"
 
-                if [[ ! -d "/usr/src/nct6687d-1.0" ]] && ! dkms status 2>/dev/null | grep -q 'nct6687d'; then
+                if ! pacman -Qq "$AUR_PKG" &>/dev/null && ! dkms status 2>/dev/null | grep -q 'nct6687d'; then
                     print_info "NCT6687 driver does not appear to be installed — nothing to remove."
                     press_enter; continue
                 fi
 
-                print_info "Removing DKMS module..."
-                dkms remove nct6687d/1.0 --all 2>/dev/null || true
-                print_info "Cleaning up files..."
-                rm -rf /usr/src/nct6687d-1.0
+                print_info "Removing ${AUR_PKG} via paru (as $REAL_USER)..."
+                sudo -u "$REAL_USER" paru -Rns "$AUR_PKG" --noconfirm 2>/dev/null || true
+                print_info "Cleaning up config files..."
                 rm -f "$MODULES_LOAD_FILE" "$OPTIONS_FILE" "$BLACKLIST_FILE"
                 modprobe -r nct6687 2>/dev/null || true
                 print_success "NCT6687 driver has been uninstalled. A reboot may be required"
