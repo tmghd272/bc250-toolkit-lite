@@ -21,11 +21,12 @@ Please use with caution.
 9. **Toggle Boot Mode** – Switches CachyOS Deckify between Steam Gaming Mode and KDE Plasma Desktop Mode
 10. **NCT Menu** – Manage the NCT6687 sensor driver by [Fred78290](https://github.com/Fred78290/nct6687d). Install or uninstall the driver, and optionally blacklist the in-kernel `nct6683` driver. NCT6687 provides fan control support that is unavailable with the stock driver.
 11. **I2C Menu** – Loads the in-kernel `isl68137` driver and binds the `isl69247` PMIC sensor over I2C/PMBus (requires the [TPMS1<->I2C_HEADER1 hardware bridge](https://github.com/onlinermm/BC250-Telemetry/blob/main/hardware.md)). Install auto-detects the correct bus (varies by board), binds the device, and persists it at boot via a systemd service — readings then show up in `sensors` like any other sensor. No web dashboard or daemon, just the driver.
-12. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
-13. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
-14. **Power & Sleep** – Manage Deck Mode (`steam-deckify.conf` power button + Steam's `config.vdf` sleep timer) and Desktop Mode (KDE Powerdevil power button + screen-off timer) directly. Includes one-shot "Shutdown (Both)" and "Disable Sleep/Screen (Both)" bulk actions, individual per-mode toggles, and a full revert to OEM defaults.
-15. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
-16. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
+12. **GDDR6 Menu** – Installs [bc250-mem-hwmon](https://github.com/tmghd272/bc250-mem-hwmon), a kernel hwmon driver (DKMS) exposing real per-chip GDDR6 temperatures — all 8 chips individually, plus hotspot/average — natively in `sensors`, and adds a genuine `mem` VRAM channel to the actual amdgpu sensor, exactly like a stock AMD card. No bundled UI, no bind-mounts.
+13. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
+14. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
+15. **Power & Sleep** – Manage Deck Mode (`steam-deckify.conf` power button + Steam's `config.vdf` sleep timer) and Desktop Mode (KDE Powerdevil power button + screen-off timer) directly. Includes one-shot "Shutdown (Both)" and "Disable Sleep/Screen (Both)" bulk actions, individual per-mode toggles, and a full revert to OEM defaults.
+16. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
+17. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
 
 ## Usage
 
@@ -67,6 +68,7 @@ curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-t
   [ B]  Toggle Boot Mode    Switch between Game Mode & Desktop
   [ N]  NCT Menu            NCT6687 sensor driver management
   [ I]  I2C Menu            isl69247 sensor driver management
+  [ G]  GDDR6 Menu          Per-chip VRAM temp — native hwmon/sensors
   [ D]  DP Audio Fix        Fix DisplayPort audio delay via WirePlumber
   [ W]  Realtek WiFi USB    RTL88x2BU driver — install, upgrade, uninstall
   [ L]  Power & Sleep       Deck + Desktop: shutdown power button, disable sleep/screen
