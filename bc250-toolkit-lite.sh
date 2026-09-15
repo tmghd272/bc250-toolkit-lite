@@ -1149,6 +1149,142 @@ EOF
             || print_error "Failed to restart WirePlumber — you may need to log out and back in."
 }
 
+STEAM_FIX_SCRIPT_PATH="/usr/local/bin/fix-steam-runtime.sh"
+STEAM_FIX_SERVICE_PATH="/etc/systemd/system/fix-steam-runtime.service"
+
+install_steam_runtime_service() {
+    print_step "AT-4a" "Installing Steam Runtime Fix boot service"
+
+    cat > "$STEAM_FIX_SCRIPT_PATH" << EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REAL_USER="$REAL_USER"
+STEAM_DIR="/home/\${REAL_USER}/.local/share/Steam"
+RUNTIME_ROOT="\${STEAM_DIR}/steamapps/common/SteamLinuxRuntime_4"
+RUNTIME_DIR="\$(find "\$RUNTIME_ROOT" -maxdepth 1 -type d -name 'steamrt4_platform_*' 2>/dev/null | sort -V | tail -n1)"
+[[ -z "\$RUNTIME_DIR" ]] && { echo "No steamrt4_platform_* dir found under \$RUNTIME_ROOT"; exit 1; }
+TARGET_DIR="\${RUNTIME_DIR}/files/share/X11/xkb/rules"
+CACHE_DIR="\${RUNTIME_ROOT}/var"
+killall -9 wineserver proton reaper 2>/dev/null || true
+pacman -S --needed --noconfirm xorg-xkbcomp xkeyboard-config
+if [[ -d /usr/share/X11/xkb/rules ]]; then
+    mkdir -p "\$TARGET_DIR"
+    cp -r /usr/share/X11/xkb/rules/. "\$TARGET_DIR/"
+else
+    echo "/usr/share/X11/xkb/rules missing"; exit 1
+fi
+if [[ -n "\$CACHE_DIR" && -d "\$CACHE_DIR" ]]; then
+    rm -rf -- "\${CACHE_DIR:?}"/*
+fi
+chown -R "\${REAL_USER}:\${REAL_USER}" "\$RUNTIME_ROOT"
+EOF
+    chmod +x "$STEAM_FIX_SCRIPT_PATH"
+
+    cat > "$STEAM_FIX_SERVICE_PATH" << 'EOF'
+[Unit]
+Description=Fix Steam Linux Runtime container (XKB sync + cache clear)
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/fix-steam-runtime.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable fix-steam-runtime.service
+    print_success "Service installed and enabled — will run on every boot."
+}
+
+remove_steam_runtime_service() {
+    print_step "AT-4b" "Removing Steam Runtime Fix boot service"
+
+    systemctl disable --now fix-steam-runtime.service 2>/dev/null || true
+    rm -f "$STEAM_FIX_SERVICE_PATH" "$STEAM_FIX_SCRIPT_PATH"
+    systemctl daemon-reload
+    print_success "Service and script removed."
+}
+
+show_steam_runtime_menu() {
+    print_banner
+    print_section "Steam Runtime Fix"
+    echo -e "  ${DIM}Fixes crashing/stuck-launching Steam games via XKB sync + cache clear.${RESET}\n"
+    local status="not installed"
+    systemctl is-enabled fix-steam-runtime.service &>/dev/null && status="installed (enabled)"
+    print_info "Boot service: $status"
+    echo ""
+    print_item "1" "Install Service"  "Run fix automatically on every boot"
+    print_item "2" "Remove Service"   "Disable and delete the boot service"
+    print_item "3" "Run Fix Now"      "Apply the fix immediately, no reboot needed"
+    echo ""
+    print_item "0" "Back"             "Return to main menu"
+    echo ""
+    echo -e "  ${BOLD}${CYAN}══════════════════════════════════════════════════════════════${RESET}"
+}
+
+run_steam_runtime_menu() {
+    while true; do
+        show_steam_runtime_menu
+        read -rp "$(echo -e "  ${BOLD}${WHITE}Enter selection:${RESET} ")" sr_choice
+        case "${sr_choice^^}" in
+            1) install_steam_runtime_service; press_enter ;;
+            2) remove_steam_runtime_service;  press_enter ;;
+            3) run_steam_runtime_fix;         press_enter ;;
+            0) return ;;
+            *)
+                print_error "Invalid selection: '$sr_choice'"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+run_steam_runtime_fix() {
+    print_step "AT-4" "Fix Steam Runtime Container (stuck/crashing games)"
+
+    local STEAM_DIR="/home/$REAL_USER/.local/share/Steam"
+    local RUNTIME_ROOT="${STEAM_DIR}/steamapps/common/SteamLinuxRuntime_4"
+    local RUNTIME_DIR
+    RUNTIME_DIR="$(find "$RUNTIME_ROOT" -maxdepth 1 -type d -name 'steamrt4_platform_*' 2>/dev/null | sort -V | tail -n1)"
+
+    if [[ -z "$RUNTIME_DIR" ]]; then
+        print_error "No steamrt4_platform_* dir found under $RUNTIME_ROOT — is Steam installed for $REAL_USER?"
+        return 1
+    fi
+
+    local TARGET_DIR="${RUNTIME_DIR}/files/share/X11/xkb/rules"
+    local CACHE_DIR="${RUNTIME_ROOT}/var"
+
+    print_info "Using runtime: ${RUNTIME_DIR##*/}"
+
+    print_info "Killing stale wine/proton processes..."
+    killall -9 wineserver proton reaper 2>/dev/null || true
+
+    print_info "Ensuring native XKB packages are present..."
+    pacman -S --needed --noconfirm xorg-xkbcomp xkeyboard-config
+
+    if [[ -d /usr/share/X11/xkb/rules ]]; then
+        print_info "Syncing system XKB rules into container..."
+        mkdir -p "$TARGET_DIR"
+        cp -r /usr/share/X11/xkb/rules/. "$TARGET_DIR/"
+    else
+        print_error "/usr/share/X11/xkb/rules missing on this system."
+        return 1
+    fi
+
+    if [[ -n "$CACHE_DIR" && -d "$CACHE_DIR" ]]; then
+        print_info "Clearing runtime cache..."
+        rm -rf -- "${CACHE_DIR:?}"/*
+    fi
+
+    chown -R "$REAL_USER:$REAL_USER" "$RUNTIME_ROOT"
+    print_success "Steam runtime fix applied — restart Steam and launch the game."
+}
+
 _run_as_user() {
     sudo -u "$REAL_USER" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "$REAL_USER")/bus" \
@@ -1993,6 +2129,7 @@ show_menu() {
     print_item  "G"  "GDDR6 Menu"          "Per-chip VRAM temp — native hwmon/sensors"
     print_item  "D"  "DP Audio Fix"        "Fix DisplayPort audio delay via WirePlumber"
     print_item  "W"  "Realtek WiFi USB"    "RTL88x2BU driver — install, upgrade, uninstall"
+    print_item  "X"  "Steam Runtime Fix"   "Install/remove boot service, or run fix now"
     print_item  "L"  "Power & Sleep"       "Deck + Desktop: shutdown power button, disable sleep/screen"
     echo ""
     print_section "System"
@@ -2023,6 +2160,7 @@ while true; do
         G) run_gddr6_menu ;;
         D) run_audio_fix;                 press_enter ;;
         W) run_realtek_wifi_menu ;;
+        X) run_steam_runtime_menu ;;
         L) run_power_sleep_menu ;;
         S) run_status;                    press_enter ;;
         M) run_module_checker ;;
