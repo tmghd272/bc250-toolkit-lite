@@ -979,6 +979,127 @@ EOF
     done
 }
 
+
+# ==============================================================================
+# GDDR6 MEMORY TEMP MENU (bc250-mem-hwmon)
+# ==============================================================================
+
+_gddr6_dir="/home/${REAL_USER}/bc250-mem-hwmon"
+_gddr6_repo="https://github.com/tmghd272/bc250-mem-hwmon"
+_gddr6_upstream_repo="https://github.com/pan-Rijovich/bc250-memory-temperature"
+_gddr6_service="bc250-mem-hwmon.service"
+_gddr6_module="bc250_gddr6_hwmon"
+
+_gddr6_status() {
+    echo -e "  ${BOLD}${YELLOW}Status${RESET}"
+    echo -e "  ${DIM}──────────────────────────────────────────────────────────────${RESET}"
+
+    if [[ -d "$_gddr6_dir" ]]; then
+        echo -e "  Setup files:       ${GREEN}present${RESET} (${_gddr6_dir})"
+    else
+        echo -e "  Setup files:       ${DIM}not downloaded${RESET}"
+    fi
+
+    if lsmod | awk -v m="$_gddr6_module" '$1==m {found=1} END{exit !found}'; then
+        echo -e "  Kernel module:     ${GREEN}loaded${RESET}"
+    else
+        echo -e "  Kernel module:     ${DIM}not loaded${RESET}"
+    fi
+
+    if systemctl is-active --quiet "$_gddr6_service" 2>/dev/null; then
+        echo -e "  Collector service: ${GREEN}running${RESET}"
+    elif systemctl list-unit-files 2>/dev/null | grep -q "^${_gddr6_service}"; then
+        echo -e "  Collector service: ${YELLOW}installed but not running${RESET}"
+    else
+        echo -e "  Collector service: ${DIM}not installed${RESET}"
+    fi
+
+    local hotspot
+    hotspot=$(sensors 2>/dev/null | awk '/^bc250_gddr6/{f=1} f&&/^hotspot:/{print $2; exit}')
+    if [[ -n "$hotspot" ]]; then
+        echo -e "  Live VRAM temp:    ${WHITE}${hotspot}${RESET} ${DIM}(hotspot, via sensors)${RESET}"
+    else
+        echo -e "  Live VRAM temp:    ${DIM}not available${RESET}"
+    fi
+    echo ""
+}
+
+run_gddr6_menu() {
+    while true; do
+        print_banner
+        print_section "GDDR6 Memory Temp Menu (bc250-mem-hwmon)"
+        echo -e "  ${DIM}Per-chip GDDR6 temps as native hwmon — visible in sensors, MangoHud,${RESET}"
+        echo -e "  ${DIM}CoolerControl. Kernel module + SMU-patch collector, no bind-mounts.${RESET}\n"
+        _gddr6_status
+        print_item "1" "Install"           "Clone repos, build kernel module, start collector"
+        print_item "2" "Uninstall"         "Stop service, remove module/DKMS, delete setup files"
+        echo ""
+        print_item "0" "Back"              "Return to main menu"
+        echo ""
+        echo -e "  ${BOLD}${CYAN}══════════════════════════════════════════════════════════════${RESET}"
+        read -rp "$(echo -e "  ${BOLD}${WHITE}Enter selection:${RESET} ")" opt
+
+        case "$opt" in
+            1)
+                print_step "G-1" "Installing GDDR6 memory temp support"
+
+                if [[ -d "$_gddr6_dir" ]]; then
+                    print_info "Setup directory already exists — skipping clone."
+                else
+                    print_info "Cloning bc250-mem-hwmon (as ${REAL_USER})..."
+                    sudo -u "$REAL_USER" git clone "$_gddr6_repo" "$_gddr6_dir" || {
+                        print_error "Failed to clone bc250-mem-hwmon."; press_enter; continue
+                    }
+                fi
+
+                cd "$_gddr6_dir" || { print_error "Cannot enter $_gddr6_dir"; press_enter; continue; }
+
+                if [[ -d "${_gddr6_dir}/bc250-memory-temperature" ]]; then
+                    print_info "Upstream repo already present — skipping clone."
+                else
+                    print_info "Cloning pan-Rijovich/bc250-memory-temperature (as ${REAL_USER})..."
+                    sudo -u "$REAL_USER" git clone "$_gddr6_upstream_repo" || {
+                        print_error "Failed to clone upstream repo."; press_enter; continue
+                    }
+                fi
+
+                chmod +x bc250_mem_hwmon.sh
+                print_info "Running installer..."
+                ./bc250_mem_hwmon.sh install || { print_error "Install failed — see output above."; press_enter; continue; }
+                cd - &>/dev/null
+                print_success "GDDR6 memory temp support installed."
+                press_enter
+                ;;
+            2)
+                print_step "G-2" "Uninstalling GDDR6 memory temp support"
+
+                if [[ -d "$_gddr6_dir" ]] && [[ -f "${_gddr6_dir}/bc250_mem_hwmon.sh" ]]; then
+                    print_info "Stopping service, removing module/DKMS registration..."
+                    (cd "$_gddr6_dir" && ./bc250_mem_hwmon.sh uninstall) || \
+                        print_error "Uninstall script reported an error — continuing cleanup anyway."
+                else
+                    print_info "No installer found locally — stopping/removing what we can directly..."
+                    systemctl disable --now "$_gddr6_service" 2>/dev/null || true
+                    modprobe -r "$_gddr6_module" 2>/dev/null || true
+                fi
+
+                if [[ -d "$_gddr6_dir" ]]; then
+                    print_info "Deleting setup files (git clones) at ${_gddr6_dir}..."
+                    rm -rf "$_gddr6_dir"
+                fi
+
+                print_success "GDDR6 memory temp support removed, setup files deleted."
+                press_enter
+                ;;
+            0) return ;;
+            *)
+                print_error "Invalid selection: '$opt'"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 run_audio_fix() {
     print_step "AT-3" "Fix DisplayPort Audio Delay"
 
@@ -1869,6 +1990,7 @@ show_menu() {
     print_item  "B"  "Toggle Boot Mode"    "Switch between Game Mode & Desktop"
     print_item  "N"  "NCT Menu"            "NCT6687 sensor driver management"
     print_item  "I"  "I2C Menu"            "isl69247 sensor driver management"
+    print_item  "G"  "GDDR6 Menu"          "Per-chip VRAM temp — native hwmon/sensors"
     print_item  "D"  "DP Audio Fix"        "Fix DisplayPort audio delay via WirePlumber"
     print_item  "W"  "Realtek WiFi USB"    "RTL88x2BU driver — install, upgrade, uninstall"
     print_item  "L"  "Power & Sleep"       "Deck + Desktop: shutdown power button, disable sleep/screen"
@@ -1898,6 +2020,7 @@ while true; do
         B) run_toggle_boot_mode;          press_enter ;;
         N) run_nct_menu ;;
         I) run_i2c_menu ;;
+        G) run_gddr6_menu ;;
         D) run_audio_fix;                 press_enter ;;
         W) run_realtek_wifi_menu ;;
         L) run_power_sleep_menu ;;
