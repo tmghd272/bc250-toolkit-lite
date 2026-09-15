@@ -25,8 +25,9 @@ Please use with caution.
 13. **DP Audio Fix** – Fixes DisplayPort audio wake-up delay using WirePlumber
 14. **Realtek WiFi USB** – Installs the RTL88x2BU DKMS driver by [RinCat](https://github.com/RinCat/RTL88x2BU-Linux-Driver), which generally provides better support than the stock in-kernel driver
 15. **Power & Sleep** – Manage Deck Mode (`steam-deckify.conf` power button + Steam's `config.vdf` sleep timer) and Desktop Mode (KDE Powerdevil power button + screen-off timer) directly. Includes one-shot "Shutdown (Both)" and "Disable Sleep/Screen (Both)" bulk actions, individual per-mode toggles, and a full revert to OEM defaults.
-16. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
-17. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
+16. **Steam Runtime Fix** – Fixes Steam games that crash or fail to launch due to missing XKB keyboard data and stale state in the SteamLinuxRuntime container. Install a boot-time systemd service that reapplies the fix automatically on every startup, remove the service, or run the fix immediately without rebooting.
+17. **Status Menu** – Displays current Limine settings and the installation status of CPU/GPU governor.
+18. **Module Checker** – View current module, driver, and WirePlumber configuration files in `/etc/modules-load.d/`, `/etc/modprobe.d/`, and `/home/$USER/.config/wireplumber/wireplumber.conf.d/`
 
 ## Usage
 
@@ -71,6 +72,7 @@ curl -sSLO https://raw.githubusercontent.com/tmghd272/bc250-toolkit/main/bc250-t
   [ G]  GDDR6 Menu          Per-chip VRAM temp — native hwmon/sensors
   [ D]  DP Audio Fix        Fix DisplayPort audio delay via WirePlumber
   [ W]  Realtek WiFi USB    RTL88x2BU driver — install, upgrade, uninstall
+  [ X]  Steam Runtime Fix   Install/remove boot service, or run fix now
   [ L]  Power & Sleep       Deck + Desktop: shutdown power button, disable sleep/screen
 
   System
